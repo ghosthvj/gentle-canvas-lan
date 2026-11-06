@@ -33,11 +33,12 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
   const notify = (ctx, text, level = 'info') => {
     if (!closed && ctx.hasUI) ctx.ui.notify(text, level);
   };
-  const report = (ctx, state) => {
+  const report = (ctx, state, announce = true) => {
     if (!closed && state.running && state.lanUrl && (state.localUrl || links?.localUrl)) {
       links = { localUrl: state.localUrl ?? links.localUrl, lanUrl: state.lanUrl };
       showLinks(ctx);
     } else if (!state.running || !state.lanUrl) clearLinks();
+    if (!announce) return;
     notify(ctx, state.running
       ? state.lanUrl ? `Canvas LAN: ${state.lanUrl}` : 'Canvas LAN proxy running. Open a design to get its URL.'
       : 'Canvas LAN proxy is not running. Use /canvas:lan start to enable it.');
@@ -52,7 +53,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     try {
       const state = await getController().openCanvas(url);
       if (!closed && state.running && state.lanUrl) links = { localUrl: state.localUrl ?? url, lanUrl: state.lanUrl };
-      report(ctx, state);
+      report(ctx, state, false);
       return state;
     } catch (error) {
       // Config/validation errors are sanitized by the config module. Never echo raw URLs.

@@ -50,6 +50,16 @@ test('entry registers without opening resources; command help/status/start/stop'
   await f.emit('session_shutdown');
 });
 
+test('automatic canvas opens keep links visible without redundant success notifications', async () => {
+  const f = fixture();
+  await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
+  assert.deepEqual(f.notices, []);
+  assert.equal(f.widgets.size, 1);
+  await f.commands.get('canvas:lan').handler('status', f.ctx);
+  assert.match(f.notices.at(-1)[0], /Canvas LAN: http/);
+  await f.emit('session_shutdown');
+});
+
 test('successful tool result shapes register; errors/irrelevant results do not', async () => {
   const f = fixture();
   for (const event of [
@@ -123,7 +133,7 @@ test('tool result exposes both Local and LAN without replacing existing content 
   assert.equal(event.details, details);
   await f.emit('tool_execution_end', { toolName: 'gentle_design', toolCallId: 'open-1', result: { content: result.content, details } });
   assert.equal(f.calls.filter(x => Array.isArray(x)).length, 1);
-  assert.equal(f.notices.length, 1);
+  assert.equal(f.notices.length, 0);
   await f.emit('session_shutdown');
 });
 
