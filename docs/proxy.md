@@ -18,7 +18,7 @@ The controller must serialize start/stop and supply validated configuration.
 internal fixtures only; production configuration must require a fixed port.
 Bind errors propagate without selecting a different port or killing any process.
 
-`setTarget()` accepts an optional full loopback `url`; its path lets the stable `/s/<shortCode>` endpoint answer `302` with the current LAN canvas location without reaching upstream. Invalid or missing code stays `404`; no target is `502`; only `GET` redirects. The short code is an independent capability generated per session and never derived from the canvas token.
+`setTarget()` accepts an optional full loopback `url`; its path lets the stable `/s/<shortCode>` endpoint answer `302` with the current LAN canvas location without reaching upstream. Invalid or missing code stays `404`; no target is `502`; only `GET` redirects. The short code is 16 hexadecimal characters (64 CSPRNG bits), independent of the canvas token and generated once per session.
 
 `setTarget()` validates before replacing the current registration. The origin
 must be exact IPv4 loopback HTTP with a port in 1–65535; canonical

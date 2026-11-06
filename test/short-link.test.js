@@ -36,7 +36,7 @@ test('short code is a stable session capability that redirects without reaching 
 
   assert.equal(c.status().shortUrl, null);
   const first = await c.openCanvas(`http://127.0.0.1:${upstreamPort}/${token}/d/demo/?view=1`);
-  assert.match(first.shortUrl, /^http:\/\/canvas\.test:34316\/s\/[A-Za-z0-9_-]{16}$/);
+  assert.match(first.shortUrl, /^http:\/\/canvas\.test:34316\/s\/[0-9a-f]{16}$/);
   assert.equal(first.lanUrl, `${publicOrigin}/${token}/d/demo/?view=1`);
   const code = first.shortUrl.slice(-16);
   const shortPath = `/s/${code}`;

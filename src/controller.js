@@ -7,7 +7,8 @@ export function createController({ config, createProxy = createCanvasProxy }) {
   const registry = createCanvasRegistry();
   // Stable short capability for the card: fits one terminal line and redirects
   // to whichever canvas is currently registered.
-  const shortCode = randomBytes(12).toString('base64url');
+  // Hex avoids trailing '-'/'_' ambiguity in the narrow card while keeping 64 bits.
+  const shortCode = randomBytes(8).toString('hex');
   let proxy = null;
   let running = false;
   let enabled = true;

@@ -13,7 +13,7 @@ The injected proxy factory is for deterministic lifecycle tests; production uses
   retained in the reported LAN URL.
 - `start()`: explicitly enable the listener and return its current state. An
   upstream is optional; requests without one receive the proxy's 502 response.
-- `status()`: return `{running, enabled, port, localUrl, lanUrl, shortUrl}` where `shortUrl` is a stable per-session `/s/<code>` capability that redirects to the current canvas. Addresses are
+- `status()`: return `{running, enabled, port, localUrl, lanUrl, shortUrl}` where `shortUrl` is a stable per-session `/s/<16-hex>` capability that redirects to the current canvas. Addresses are
   capability URLs; do not persist this object in request logs.
 - `clearCanvas()`: revoke the registration and close stale upstream streams,
   keeping the listener available for later registration.
