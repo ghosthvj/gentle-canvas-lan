@@ -86,7 +86,7 @@ Real installed-canvas checks are separate and need the local Gentle Shell instal
 GENTLE_PI_ROOT=/absolute/path/to/gentle-pi npm run test:canvas
 ```
 
-That integration command checks both the installed canvas server and the actual extension entry through Jiti with the host's `pi-tui` alias and disk caching disabled. It asserts that a TUI open mounts the component factory rather than the plain-string fallback. It creates temporary fixture designs under excluded `.test-tmp/`. It does not modify installed sources, user designs, host settings or networking. Missing installation is an explicit error, not a silent skip.
+That integration command checks both the installed canvas server and the actual extension entry through Jiti with the host's `pi-tui` alias and disk caching disabled. It asserts that a TUI open mounts the component factory rather than the plain-string fallback. A further test runs the installed shell's actual sidebar layout and Pi frame renderer: initial/cached wide frames, narrow fallback and re-expansion must keep the LAN presentation visible. This uses a synthetic terminal/root, not a screenshot of your interactive session. It creates temporary fixture designs under excluded `.test-tmp/`. It does not modify installed sources, user designs, host settings or networking. Missing installation is an explicit error, not a silent skip.
 
 After automated checks, manually verify from another LAN device: open a design, render its artboard/resources, add/send a fixture comment, observe live updates, restart the canvas and use its new link, confirm the old link fails, then stop the proxy and confirm the port is inaccessible. Do not run these against valuable designs or an agent session where fixture implementation requests would be undesirable.
 

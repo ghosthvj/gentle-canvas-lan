@@ -19,8 +19,11 @@ Gentle Design's original local output.
   false, allowing the caller to select its fallback. In that case a captured
   Canvas wrapper delegates only its original footer rows, so a foreign wrapper
   cannot cause both a sidebar card and a fallback card to display the same URL.
-- `isActive()` also requires fullscreen mode, `active === true`, and successful
-  ownership and visibility checks. If present, `ownsHost()` must return `true`
+- `isActive()` also requires fullscreen mode, published `active === true`, and
+  successful ownership and visibility checks. Rendering/digests instead use
+  `ownsHost()` eligibility: the shell resets `active` while measuring a frame,
+  so using that transient output flag would cache a footer without the card.
+  Legacy hosts without `ownsHost()` retain the conservative active-flag check. If present, `ownsHost()` must return `true`
   and `statusHidden()` must return `false`. Throwing or malformed policy hooks
   hide the panel. Inactive/narrow rails never render the panel.
 - `invalidate()` changes the wrapper digest, clears measured segments, and asks

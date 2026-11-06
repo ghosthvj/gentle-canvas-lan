@@ -37,10 +37,13 @@ export function attachSidebar(tui, panel) {
   let rendered;
   const active = () => {
     if (entry.disposed || !mounted() || tui.mode !== 'fullscreen' || tui.terminal !== terminal
-      || terminal[STATE] !== host || host.active !== true) return false;
+      || terminal[STATE] !== host) return false;
     try {
-      if (host.ownsHost !== undefined && (typeof host.ownsHost !== 'function'
-        || host.ownsHost() !== true)) return false;
+      // During layout preparation the shell resets active before measuring
+      // parts. Eligibility must come from ownsHost, not that output flag.
+      if (host.ownsHost !== undefined) {
+        if (typeof host.ownsHost !== 'function' || host.ownsHost() !== true) return false;
+      } else if (host.active !== true) return false;
       // Unknown policy values and throwing hooks fail closed.
       if (host.statusHidden !== undefined && (typeof host.statusHidden !== 'function'
         || host.statusHidden() !== false)) return false;
@@ -110,7 +113,7 @@ export function attachSidebar(tui, panel) {
 
   return {
     isMounted: mounted,
-    isActive: () => mounted() && active(),
+    isActive: () => host.active === true && mounted() && active(),
     invalidate() {
       if (entry.disposed) return;
       revision++;

@@ -34,6 +34,28 @@ test('incompatible hosts and components are left untouched', () => {
   assert.equal(attachSidebar(f.tui, f.panel), null);
 });
 
+test('host prepare resets active before digest/render without suppressing an eligible card', () => {
+  const f = fixture();
+  const a = attachSidebar(f.tui, f.panel);
+  // Installed Gentle Shell prepare() clears active, then measures digests/rows,
+  // and only publishes active after composing sections. ownsHost stays true.
+  f.host.active = false;
+  const measuredDigest = f.footer().digest();
+  const rows = f.footer().render(40);
+  assert.deepEqual(rows, ['status', 'detail', 'hint', 'Canvas LAN', 'LAN link']);
+  assert.deepEqual(f.footer().cardGroups(40).groups.at(-1), { start: 3, end: 5 });
+  assert.equal(a.isActive(), false);
+  f.host.active = true;
+  assert.equal(a.isActive(), true);
+  assert.equal(f.footer().digest(), measuredDigest);
+  // A second measurement must remain identical, so cached rows contain LAN.
+  f.host.active = false;
+  assert.equal(f.footer().digest(), measuredDigest);
+  assert.deepEqual(f.footer().render(40), rows);
+  f.host.active = true;
+  a.dispose();
+});
+
 test('previous rows, grouped cards, loose rows, heights and mouse coordinates survive', () => {
   const f = fixture();
   const attachment = attachSidebar(f.tui, f.panel);
@@ -69,7 +91,7 @@ test('digest tracks previous, panel, invalidation, resize and visibility without
   const f = fixture();
   const a = attachSidebar(f.tui, f.panel);
   const changes = [() => f.previous.revision++, () => f.panel.revision++,
-    () => a.invalidate(), () => f.footer().invalidate(), () => { f.host.active = false; }];
+    () => a.invalidate(), () => f.footer().invalidate(), () => { f.host.ownsHost = () => false; }];
   for (const change of changes) {
     const before = f.footer().digest();
     change();
@@ -88,7 +110,7 @@ test('digest tracks previous, panel, invalidation, resize and visibility without
 });
 
 test('narrow, hidden, lost ownership and mismatched state never paint or route panel', () => {
-  for (const disable of [f => { f.host.active = false; },
+  for (const disable of [f => { f.host.active = false; f.host.ownsHost = () => false; },
     f => { f.host.ownsHost = () => false; },
     f => { f.host.ownsHost = () => { throw Error('owner'); }; },
     f => { f.host.statusHidden = () => true; },
