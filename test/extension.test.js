@@ -95,10 +95,11 @@ test('narrow fallback has a themed separator without altering sidebar or link ta
   host.active = false;
   for (const width of [80, 40, 1]) {
     const rows = f.component().render(width);
-    assert.equal(rows[0], '─'.repeat(width));
-    assert.equal(rows.length, 3);
-    assert.equal(rows[1], 'CANVAS LAN'.slice(0, width));
-    const target = rows[2].match(/\x1b\]8;;([^\x1b\x07]+)(?:\x1b\\|\x07)/)?.[1];
+    if (width >= 40) assert.equal(rows[0], `─ ✿ CANVAS LAN ${'─'.repeat(width - 15)}`);
+    else assert.equal(rows[0], '─');
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].length, width);
+    const target = rows[1].match(/\x1b\]8;;([^\x1b\x07]+)(?:\x1b\\|\x07)/)?.[1];
     assert.equal(target, 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/');
   }
   eligible = true;

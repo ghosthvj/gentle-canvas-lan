@@ -68,7 +68,13 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
             if (disposed || attachment?.isActive()) return [];
             const rows = panel.render(width);
             if (!rows.length) return [];
-            return [theme.fg('border', '─'.repeat(Math.floor(width))), ...rows];
+            const columns = Math.floor(width);
+            const title = tools.truncateToWidth(' ✿ CANVAS LAN ', Math.max(0, columns - 1), '');
+            const remaining = Math.max(0, columns - 1 - tools.visibleWidth(title));
+            const heading = theme.fg('border', '─')
+              + theme.fg('dim', theme.bold(title))
+              + theme.fg('border', '─'.repeat(remaining));
+            return [heading, ...rows.slice(1)];
           },
           invalidate() { panel.invalidate(); attachment?.invalidate(); },
           dispose() {
