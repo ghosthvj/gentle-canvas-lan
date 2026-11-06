@@ -19,7 +19,9 @@ Pi TUI import. This module has no runtime dependencies, I/O or timers.
   canonical LAN URL as plain wrapped text. The extension normally supplies a
   short stable LAN redirect instead, so the card link fits one terminal line. The label also carries an OSC 8
   destination for terminals that expose it, but plain URL text is the reliable
-  Ctrl+click path in hosts such as Herdr. Labels are never explicitly underlined. The header is plain
+  Ctrl+click path in hosts such as Herdr. With `osc8Probe: true`, one extra
+  OSC 8-wrapped copy of the same short URL is appended when it fits one line, so
+  terminals can be compared; labels are never explicitly underlined. The header is plain
   `▾ CANVAS LAN`/`▸ CANVAS LAN` so the native card applies its own glyph and
   title color; the document glyph lives in the body label. It never adds another address, frame, blank
   padding, shortcuts or clipboard affordances. The shell owns the surrounding rail.

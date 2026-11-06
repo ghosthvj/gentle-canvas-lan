@@ -112,6 +112,21 @@ test('visible URL text is never underlined and stays complete for Ctrl+click', (
   }
 });
 
+test('optional OSC 8 probe adds a second copy of the short URL for terminal comparison', () => {
+  const theme = { fg: (_role, text) => text, bold: text => text, underline: text => text };
+  const probe = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true, osc8Probe: true });
+  const plainOnly = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true });
+  const short = 'http://10.10.5.34:34316/s/96ca25cf56b6c895';
+  probe.setUrl(short);
+  plainOnly.setUrl(short);
+  const rows = probe.render(48).map(unstyle);
+  const plainRows = plainOnly.render(48).map(unstyle);
+  assert.equal(rows.filter(row => row === short).length, 2);
+  assert.equal(plainRows.filter(row => row === short).length, 1);
+  assert.equal(targets(probe.render(48).at(-1))[0], short);
+  assert.equal(probe.render(1).length, plainOnly.render(1).length, 'no probe row when the URL cannot fit one line');
+});
+
 test('idle, replacement, clearing and invalidation preserve public state semantics', () => {
   const { panel } = fixture();
   const empty = panel.digest();

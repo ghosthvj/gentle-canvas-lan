@@ -1,7 +1,7 @@
 const invalidUrl = 'Expected a control-free HTTP(S) LAN URL or null.';
 
 /** A rail-owned, LAN-only component; terminal helpers come from the active host. */
-export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated = false }) {
+export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated = false, osc8Probe = false }) {
   let url = null;
   let collapsed = false;
 
@@ -53,6 +53,11 @@ export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated
         if (!chunk) break;
         rows.push(theme.fg('accent', chunk));
         offset += chunk.length;
+      }
+      if (osc8Probe && visibleWidth(url) <= columns) {
+        // Temporary A/B aid: same short URL wrapped in OSC 8, so terminals can
+        // be compared against the plain-text row above.
+        rows.push(`\x1b]8;;${url}\x1b\\${theme.fg('accent', url)}\x1b]8;;\x1b\\`);
       }
       return rows;
     },

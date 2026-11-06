@@ -114,8 +114,8 @@ test('card shows only the short capability while status and tool output keep the
     assert.match(flat, /\/s\/[A-Za-z0-9_-]{16}/);
     assert.equal(flat.includes(token), false, 'card must never leak the canvas token');
     const stripOsc = row => row.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, '');
-    assert.equal(rows.map(stripOsc).filter(row => /\/s\/[A-Za-z0-9_-]{16}/.test(row)).length, 1,
-      'short link fits one line');
+    assert.equal(rows.map(stripOsc).filter(row => /\/s\/[0-9a-f]{16}/.test(row)).length, 2,
+      'plain and OSC 8 probe rows each fit one line');
     await handlers.get('command:canvas:lan')('status', ctx);
     assert.equal(notices.at(-1)[0], `Canvas LAN: http://127.0.0.1:34317/${token}/d/demo/`);
   } finally {
