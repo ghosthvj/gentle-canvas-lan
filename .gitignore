@@ -1,5 +1,7 @@
 # Local harness state (pre-existing)
 .atl/
+.codegraph/
+.test-tmp/
 
 # Dependencies and generated output
 node_modules/
