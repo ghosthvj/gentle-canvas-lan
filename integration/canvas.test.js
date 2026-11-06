@@ -60,7 +60,7 @@ test('real installed canvas: page, sandbox resources, POST, SSE, rotation and st
   canvas = await start();
   const state = await controller.openCanvas(canvas.url);
   const base = `/${canvas.token}/`;
-  const panel = createLanPanel({ theme: { fg: (_role, text) => text, bold: text => text }, truncateToWidth, visibleWidth });
+  const panel = createLanPanel({ theme: { fg: (_role, text) => text, bold: text => text, underline: text => text }, truncateToWidth, visibleWidth });
   panel.setUrl(state.lanUrl);
   for (const width of [48, 40, 20]) {
     const cardLine = truncateToWidth(panel.render(width)[1], width - 2);

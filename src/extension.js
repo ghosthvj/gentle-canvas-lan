@@ -53,8 +53,8 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       }
       if (closed || !links || generation !== presentationGeneration) return;
       ui.setWidget('canvas-lan-links', (tui, theme) => {
-        const panel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth, decorated: true });
-        const fallbackPanel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth });
+        const panel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth, decorated: true, hyperlinks: tools.hyperlinks !== false });
+        const fallbackPanel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth, hyperlinks: tools.hyperlinks !== false });
         panel.setUrl(links.lanUrl);
         fallbackPanel.setUrl(links.lanUrl);
         const attachment = attachSidebar(tui, panel);

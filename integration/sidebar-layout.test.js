@@ -18,7 +18,7 @@ const { sidebarPart, sidebarState } = await jiti.import(join(rootPath, 'lib/shel
 // Runs the installed preparation/cache/render code, not a hand-written active flag.
 // The terminal and conversation are synthetic; no private sessions or real TTY.
 test('installed sidebar layout renders LAN during prepare and cached frames, with narrow fallback', t => {
-  const theme = { fg: (_role, text) => text, bold: text => text };
+  const theme = { fg: (_role, text) => text, bold: text => text, underline: text => text };
   const host = { mode: 'fullscreen', terminal: { columns: 180 }, layoutRoot: undefined, requestRender() {} };
   sidebarPart(host, 'footer', { render: () => ['STATUS'], invalidate() {}, digest: () => 'status' });
   const panel = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true });

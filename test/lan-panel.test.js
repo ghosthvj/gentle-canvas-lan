@@ -27,6 +27,7 @@ function fixture() {
       return `\x1b[${this.color}m${text}\x1b[0m`;
     },
     bold: text => `\x1b[1m${text}\x1b[0m`,
+    underline: text => `\x1b[4m${text}\x1b[0m`,
   };
   return { panel: createLanPanel({ theme, truncateToWidth, visibleWidth }), theme, paints };
 }
@@ -76,7 +77,7 @@ test('header press claims and click toggles; link and unrelated mouse events rem
 });
 
 test('decorated card keeps dash and glyph outside the underlined link', () => {
-  const theme = { fg: (_role, text) => text, bold: text => text };
+  const theme = { fg: (_role, text) => text, bold: text => text, underline: text => text };
   const panel = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true });
   panel.setUrl(urls[0]);
   for (const width of [48, 40]) {
@@ -89,6 +90,20 @@ test('decorated card keeps dash and glyph outside the underlined link', () => {
     assert.equal(visibleWidth(plain[1].slice(0, labelStart)), visibleWidth('- ▤ '));
     assert.doesNotMatch(rows[1].slice(0, linkStart), /Open Design Canvas/);
     assert.deepEqual(targets(rows[1]), [urls[0]]);
+  }
+});
+
+test('terminal without OSC 8 shows the complete selectable LAN URL and explicit underline', () => {
+  const theme = { fg: (_role, text) => text, bold: text => text, underline: text => `\x1b[4m${text}\x1b[0m` };
+  const panel = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true, hyperlinks: false });
+  panel.setUrl(urls[1]);
+  for (const width of [48, 20]) {
+    const rows = panel.render(width);
+    const plain = rows.map(unstyle);
+    assert.equal(rows.join('').includes('\x1b]8;;'), false);
+    assert.match(rows[1], /\x1b\[4mOpen Design/);
+    assert.equal(plain.slice(2).join(''), new URL(urls[1]).href);
+    assert.ok(rows.every(row => visibleWidth(row) <= width));
   }
 });
 

@@ -30,7 +30,7 @@ test('real entry under host loader mounts a sidebar rather than silent string fa
   const footer = { render: () => ['STATUS'], invalidate() {}, digest: () => 'status' };
   const host = { active: true, ownsHost: () => true, parts: new Map([['footer', footer]]) };
   const tui = { mode: 'fullscreen', terminal: { [Symbol.for('gentle-pi.experimental-sidebar.state')]: host }, requestRender() {} };
-  const theme = { fg: (_role, value) => value, bold: value => value };
+  const theme = { fg: (_role, value) => value, bold: value => value, underline: value => value };
   let component;
   let kind;
   const ctx = { mode: 'tui', hasUI: true, ui: {

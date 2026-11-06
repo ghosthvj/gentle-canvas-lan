@@ -1,7 +1,7 @@
 const invalidUrl = 'Expected a control-free HTTP(S) LAN URL or null.';
 
 /** A rail-owned, LAN-only component; terminal helpers come from the active host. */
-export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated = false }) {
+export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated = false, hyperlinks = true }) {
   let url = null;
   let collapsed = false;
 
@@ -42,8 +42,22 @@ export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated
       const prefixWidth = visibleWidth(prefix);
       const label = truncateToWidth('Open Design Canvas', Math.max(1, columns - prefixWidth), '');
       if (!label || visibleWidth(label) > columns - prefixWidth) return [];
+      const underline = theme.underline ?? (text => text);
+      const action = theme.fg('accent', underline(label));
+      if (!hyperlinks) {
+        // Terminal ignores OSC 8: expose the full capability as selectable text.
+        const rows = [styledHeader, prefix + action];
+        const plain = theme.fg('accent', url);
+        for (let offset = 0; offset < plain.length;) {
+          const chunk = truncateToWidth(plain.slice(offset, offset + columns), columns, '');
+          if (!chunk) break;
+          rows.push(chunk);
+          offset += chunk.length;
+        }
+        return rows;
+      }
       // Only the action text is underlined; decoration stays outside the link.
-      const link = `\x1b]8;;${url}\x1b\\${theme.fg('accent', label)}\x1b]8;;\x1b\\`;
+      const link = `\x1b]8;;${url}\x1b\\${action}\x1b]8;;\x1b\\`;
       return [styledHeader, prefix + link];
     },
 

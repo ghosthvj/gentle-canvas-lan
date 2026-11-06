@@ -8,7 +8,7 @@ function fixture(options = {}) {
   let component;
   const terminal = options.terminal ?? {};
   const tui = { mode: 'fullscreen', terminal, requestRender() {} };
-  const theme = { fg: (_role, value) => value, bold: value => value };
+  const theme = { fg: (_role, value) => value, bold: value => value, underline: value => value };
   const commands = new Map();
   const notices = [];
   const calls = [];
