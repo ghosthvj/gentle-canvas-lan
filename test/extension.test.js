@@ -6,6 +6,10 @@ import { installCanvasLan } from '../src/extension.js';
 const url = 'http://127.0.0.1:41234/abcdefghijklmnop/d/demo/';
 function fixture(options = {}) {
   const handlers = new Map();
+  let component;
+  const terminal = options.terminal ?? {};
+  const tui = { mode: 'fullscreen', terminal, requestRender() {} };
+  const theme = { fg: (_role, value) => value, bold: value => value };
   const commands = new Map();
   const notices = [];
   const calls = [];
@@ -23,12 +27,20 @@ function fixture(options = {}) {
   const pi = { on: (event, fn) => handlers.set(event, fn), registerCommand: (name, spec) => commands.set(name, spec) };
   const ui = {
     notify(text, level) { notices.push([text, level]); return 'original-result'; },
-    setWidget(key, lines, options) { if (lines === undefined) widgets.delete(key); else widgets.set(key, { lines, options }); },
+    setWidget(key, lines, options) {
+      component?.dispose?.();
+      component = undefined;
+      if (lines === undefined) widgets.delete(key);
+      else {
+        if (typeof lines === 'function') component = lines(tui, theme);
+        widgets.set(key, { lines, options });
+      }
+    },
   };
   const original = ui.notify;
-  const ctx = { hasUI: true, ui };
-  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, makeController: () => { calls.push('construct'); return controller; }, ...options });
-  return { pi, calls, notices, widgets, ctx, original, commands, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
+  const ctx = { hasUI: true, ui, ...(options.tuiMode ? { mode: 'tui' } : {}) };
+  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, makeController: () => { calls.push('construct'); return controller; }, loadUi: async () => ({ truncateToWidth: (value, width) => value.slice(0, width), visibleWidth: value => value.length }), ...options });
+  return { pi, calls, notices, widgets, ctx, original, commands, component: () => component, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
 }
 
 test('entry registers without opening resources; command help/status/start/stop', async () => {
@@ -47,6 +59,48 @@ test('entry registers without opening resources; command help/status/start/stop'
   assert.match(f.notices.at(-1)[0], /Canvas LAN: http/);
   await command.handler('stop', f.ctx);
   assert.equal(f.calls.at(-1), 'stop');
+  await f.emit('session_shutdown');
+});
+
+test('TUI mounts LAN-only sidebar and restores footer when stopped', async () => {
+  const footer = { render: () => ['STATUS'], invalidate() {}, digest: () => 'status' };
+  const host = { active: true, parts: new Map([['footer', footer]]), ownsHost: () => true };
+  const terminal = { [Symbol.for('gentle-pi.experimental-sidebar.state')]: host };
+  const f = fixture({ tuiMode: true, terminal });
+  await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
+  await f.emit('agent_settled');
+  assert.notEqual(host.parts.get('footer'), footer);
+  const rendered = host.parts.get('footer').render(48).join('\n');
+  assert.match(rendered, /CANVAS LAN/);
+  assert.equal(rendered.includes('Local'), false);
+  assert.equal(rendered.includes('127.0.0.1'), false);
+  assert.deepEqual(f.component().render(48), []);
+  host.active = false;
+  assert.match(f.component().render(48).join('\n'), /CANVAS LAN/);
+  await f.commands.get('canvas:lan').handler('stop', f.ctx);
+  assert.equal(host.parts.get('footer'), footer);
+  assert.equal(f.widgets.size, 0);
+  await f.emit('session_shutdown');
+});
+
+test('later MCP-style footer does not duplicate the LAN presentation', async () => {
+  const footer = { render: () => ['STATUS'], invalidate() {} };
+  const host = { active: true, parts: new Map([['footer', footer]]) };
+  const terminal = { [Symbol.for('gentle-pi.experimental-sidebar.state')]: host };
+  const f = fixture({ tuiMode: true, terminal });
+  await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
+  await f.emit('agent_settled');
+  const captured = host.parts.get('footer');
+  host.parts.set('footer', {
+    render: width => [...captured.render(width), 'MCP'],
+    invalidate: () => captured.invalidate(),
+  });
+  const lan = 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/';
+  const sidebar = host.parts.get('footer').render(80).join('');
+  const fallback = f.component().render(80).join('');
+  assert.equal(Number(sidebar.includes(lan)) + Number(fallback.includes(lan)), 1);
+  assert.equal(sidebar.includes('STATUS'), true);
+  assert.equal(sidebar.includes('MCP'), true);
   await f.emit('session_shutdown');
 });
 
@@ -84,7 +138,7 @@ test('settled UI shows both links even when the final assistant omits LAN', asyn
   await f.emit('message_end', { message: { role: 'assistant', content: [{ type: 'text', text: `Canvas: ${url}` }] } });
   await f.emit('agent_settled');
   assert.deepEqual(f.widgets.get('canvas-lan-links'), {
-    lines: [`Canvas Local: ${url}`, 'Canvas LAN: http://192.168.1.20:34316/abcdefghijklmnop/d/demo/'],
+    lines: ['Canvas LAN: http://192.168.1.20:34316/abcdefghijklmnop/d/demo/'],
     options: { placement: 'belowEditor' },
   });
   const before = f.calls.length;
@@ -120,14 +174,15 @@ test('settled without a running canvas does not create widgets or controllers', 
   assert.equal(f.widgets.size, 0);
 });
 
-test('tool result exposes both Local and LAN without replacing existing content or details', async () => {
+test('tool result adds only LAN without replacing original local content or details', async () => {
   const f = fixture();
   const content = [{ type: 'text', text: `Design canvas: ${url}` }, { type: 'image', data: 'fixture', mimeType: 'image/png' }];
   const details = { url, opened: false };
   const event = { toolName: 'gentle_design', toolCallId: 'open-1', content, details, isError: false };
   const result = await f.emit('tool_result', event);
   assert.deepEqual(result.content.slice(0, 2), content);
-  assert.equal(result.content[2].text, `Canvas Local: ${url}\nCanvas LAN: http://192.168.1.20:34316/abcdefghijklmnop/d/demo/`);
+  assert.equal(result.content[2].text, 'Canvas LAN: http://192.168.1.20:34316/abcdefghijklmnop/d/demo/');
+  assert.equal(result.content.filter(block => block.type === 'text' && block.text.includes(url)).length, 1);
   assert.equal(result.details, undefined);
   assert.deepEqual(event.content, content);
   assert.equal(event.details, details);
@@ -149,11 +204,11 @@ test('tool result leaves failed, unrelated and unavailable LAN results unchanged
   await f.emit('session_shutdown');
 });
 
-test('list tool result also includes both links; stopped proxy does not advertise LAN', async () => {
+test('list tool result includes only LAN; stopped proxy does not advertise LAN', async () => {
   const f = fixture();
   const result = await f.emit('tool_result', { toolName: 'gentle_design', details: { canvas: { running: true, url } }, content: [] });
-  assert.match(result.content[0].text, /^Canvas Local: http/);
-  assert.match(result.content[0].text, /\nCanvas LAN: http/);
+  assert.equal(result.content[0].text, 'Canvas LAN: http://192.168.1.20:34316/abcdefghijklmnop/d/demo/');
+  assert.equal(result.content[0].text.includes('Local'), false);
   await f.emit('session_shutdown');
   const stopped = fixture({ makeController: () => ({ async openCanvas() { return { running: false, lanUrl: null }; }, async shutdown() {} }) });
   assert.equal(await stopped.emit('tool_result', { toolName: 'gentle_design', details: { url }, content: [] }), undefined);

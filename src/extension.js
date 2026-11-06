@@ -1,11 +1,13 @@
 import { readConfig } from './config.js';
 import { createController } from './controller.js';
+import { attachSidebar } from './sidebar-adapter.js';
+import { createLanPanel } from './lan-panel.js';
 
 const usage = 'Usage: /canvas:lan [start|status|stop]';
 const noticeUrl = /^Design canvas(?: refreshed)?: (http:\/\/(?:127\.0\.0\.1|localhost):\d+\/\S*)/m;
 
-/** Expose local and LAN links while preserving the canvas's original result fields. */
-export function installCanvasLan(pi, { env = process.env, makeController = createController } = {}) {
+/** Expose LAN access while preserving Gentle Design's own local result fields. */
+export function installCanvasLan(pi, { env = process.env, makeController = createController, loadUi = () => import('@earendil-works/pi-tui') } = {}) {
   let controller;
   let closed = false;
   const pending = new Set();
@@ -13,30 +15,80 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
   const observedCalls = new Set();
   let links = null;
   const widgetUis = new Set();
+  const presentations = new Map();
+  const mounting = new Map();
+  let presentationGeneration = 0;
+  let uiTools;
   const clearLinks = () => {
     links = null;
+    presentationGeneration++;
     for (const ui of widgetUis) ui.setWidget('canvas-lan-links', undefined);
     widgetUis.clear();
+    presentations.clear();
+    mounting.clear();
   };
   const clearCanvas = () => {
     controller?.clearCanvas();
     clearLinks();
   };
-  const showLinks = ctx => {
+  const showLinks = async ctx => {
     if (closed || !links || !ctx.hasUI || typeof ctx.ui.setWidget !== 'function') return;
-    widgetUis.add(ctx.ui);
-    ctx.ui.setWidget('canvas-lan-links', [
-      `Canvas Local: ${links.localUrl}`, `Canvas LAN: ${links.lanUrl}`,
-    ], { placement: 'belowEditor' });
+    const ui = ctx.ui;
+    widgetUis.add(ui);
+    if (ctx.mode !== 'tui') {
+      ui.setWidget('canvas-lan-links', [`Canvas LAN: ${links.lanUrl}`], { placement: 'belowEditor' });
+      return;
+    }
+    if (presentations.has(ui)) { presentations.get(ui).update(); return; }
+    if (mounting.has(ui)) return mounting.get(ui);
+    const generation = presentationGeneration;
+    const work = (async () => {
+      let tools;
+      try { tools = await (uiTools ??= loadUi()); }
+      catch {
+        if (!closed && links && generation === presentationGeneration) {
+          ui.setWidget('canvas-lan-links', [`Canvas LAN: ${links.lanUrl}`], { placement: 'belowEditor' });
+        }
+        return;
+      }
+      if (closed || !links || generation !== presentationGeneration) return;
+      ui.setWidget('canvas-lan-links', (tui, theme) => {
+        const panel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth });
+        panel.setUrl(links.lanUrl);
+        const attachment = attachSidebar(tui, panel);
+        let disposed = false;
+        const view = {
+          update() {
+            if (disposed) return;
+            panel.setUrl(links?.lanUrl ?? null);
+            attachment?.invalidate();
+            tui.requestRender();
+          },
+          render(width) { return disposed || attachment?.isActive() ? [] : panel.render(width); },
+          invalidate() { panel.invalidate(); attachment?.invalidate(); },
+          dispose() {
+            if (disposed) return;
+            disposed = true;
+            attachment?.dispose();
+            if (presentations.get(ui) === view) presentations.delete(ui);
+          },
+        };
+        presentations.set(ui, view);
+        return view;
+      }, { placement: 'belowEditor' });
+    })();
+    mounting.set(ui, work);
+    try { await work; }
+    finally { if (mounting.get(ui) === work) mounting.delete(ui); }
   };
   const getController = () => controller ??= makeController({ config: readConfig(env) });
   const notify = (ctx, text, level = 'info') => {
     if (!closed && ctx.hasUI) ctx.ui.notify(text, level);
   };
   const report = (ctx, state, announce = true) => {
-    if (!closed && state.running && state.lanUrl && (state.localUrl || links?.localUrl)) {
-      links = { localUrl: state.localUrl ?? links.localUrl, lanUrl: state.lanUrl };
-      showLinks(ctx);
+    if (!closed && state.running && state.lanUrl) {
+      links = { lanUrl: state.lanUrl };
+      void track(showLinks(ctx));
     } else if (!state.running || !state.lanUrl) clearLinks();
     if (!announce) return;
     notify(ctx, state.running
@@ -52,7 +104,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     if (closed) return;
     try {
       const state = await getController().openCanvas(url);
-      if (!closed && state.running && state.lanUrl) links = { localUrl: state.localUrl ?? url, lanUrl: state.lanUrl };
+      if (!closed && state.running && state.lanUrl) links = { lanUrl: state.lanUrl };
       report(ctx, state, false);
       return state;
     } catch (error) {
@@ -111,7 +163,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     return {
       content: [...(event.content ?? []), {
         type: 'text',
-        text: `Canvas Local: ${state.localUrl ?? url}\nCanvas LAN: ${state.lanUrl}`,
+        text: `Canvas LAN: ${state.lanUrl}`,
       }],
     };
   });
@@ -124,7 +176,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     const url = details?.url ?? details?.canvas?.url;
     if (typeof url === 'string') await open(url, ctx);
   });
-  pi.on('agent_settled', (_event, ctx) => showLinks(ctx));
+  pi.on('agent_settled', (_event, ctx) => track(showLinks(ctx)));
   pi.on('session_shutdown', async () => {
     closed = true;
     clearLinks();
