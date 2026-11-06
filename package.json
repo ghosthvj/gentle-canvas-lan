@@ -2,10 +2,20 @@
   "name": "gentle-canvas-lan",
   "version": "0.0.0",
   "private": true,
-  "description": "Planned Gentle Shell extension for a fixed LAN endpoint to the dynamic Gentle Design canvas.",
+  "description": "Access the dynamic Gentle Design canvas through a fixed LAN endpoint.",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:canvas": "node --test integration/canvas.test.js"
+  },
+  "pi": {
+    "extensions": ["./extensions/canvas-lan.js"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
 }
