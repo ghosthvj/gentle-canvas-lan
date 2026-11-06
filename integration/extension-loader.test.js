@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import net from 'node:net';
 import { once } from 'node:events';
 import { resolve, join } from 'node:path';
@@ -57,7 +58,17 @@ test('real entry under host loader mounts a sidebar rather than silent string fa
   assert.notEqual(host.parts.get('footer'), footer);
   const rows = host.parts.get('footer').render(180).join('\n');
   assert.match(rows, /CANVAS LAN/);
-  assert.match(rows, new RegExp(`http://127\\.0\\.0\\.1:${port}/abcdefghijklmnop/d/demo/`));
+  const shortUrl = rows.match(new RegExp(`http://127\\.0\\.0\\.1:${port}/s/[A-Za-z0-9_-]{16}`))?.[0];
+  assert.ok(shortUrl, 'card must show the stable short LAN capability');
+  const redirect = await new Promise((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port, path: new URL(shortUrl).pathname,
+      headers: { host: `127.0.0.1:${port}` } }, res => {
+      res.resume();
+      resolve({ status: res.statusCode, location: res.headers.location });
+    }).on('error', reject);
+  });
+  assert.equal(redirect.status, 302);
+  assert.equal(redirect.location, `http://127.0.0.1:${port}/abcdefghijklmnop/d/demo/`);
   assert.deepEqual(component.render(180), []);
   await handlers.get('session_shutdown')({}, ctx);
   assert.equal(host.parts.get('footer'), footer);

@@ -22,7 +22,17 @@ function validateTarget(target) {
       typeof target.token !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(target.token)) {
     throw new Error('Invalid canvas target');
   }
-  return { origin: new URL(target.origin).origin, token: target.token };
+  const origin = new URL(target.origin).origin;
+  let path;
+  if (target.url !== undefined) {
+    let parsed;
+    try { parsed = new URL(target.url); } catch { throw new Error('Invalid canvas target'); }
+    if (parsed.origin !== origin || !parsed.pathname.startsWith(`/${target.token}/`)) {
+      throw new Error('Invalid canvas target');
+    }
+    path = `${parsed.pathname}${parsed.search}`;
+  }
+  return { origin, token: target.token, ...(path ? { path } : {}) };
 }
 
 // Inspect raw segments before URL normalization can hide traversal or token encoding.
@@ -50,13 +60,16 @@ function extendCsp(value, origin, publicOrigin) {
 }
 
 /** Explicit endpoint only: registration and lifecycle serialization belong to the controller. */
-export function createCanvasProxy({ host, port, publicOrigin }) {
+export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
   if (typeof host !== 'string' || !host.trim() || !Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error('Invalid proxy endpoint');
   }
   const external = new URL(publicOrigin);
   if (!['http:', 'https:'].includes(external.protocol) || external.origin !== publicOrigin) {
     throw new Error('Invalid public origin');
+  }
+  if (shortCode !== undefined && (typeof shortCode !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(shortCode))) {
+    throw new Error('Invalid short code');
   }
   let target = null;
   let boundPort = null;
@@ -72,6 +85,11 @@ export function createCanvasProxy({ host, port, publicOrigin }) {
     };
     if (req.headers.host !== external.host) return fail(421);
     const current = target;
+    if (shortCode && req.url === `/s/${shortCode}`) {
+      if (!current?.path || req.method !== 'GET') return fail(current ? 404 : 502);
+      res.writeHead(302, { location: `${publicOrigin}${current.path}`, 'cache-control': 'no-store' });
+      return res.end();
+    }
     if (!current) return fail(502);
     const remainder = remainderFor(req.url, current.token);
     if (remainder === null) return fail(404);
@@ -134,7 +152,7 @@ export function createCanvasProxy({ host, port, publicOrigin }) {
     get port() { return boundPort; },
     setTarget(next) {
       const validated = validateTarget(next);
-      if (validated?.origin === target?.origin && validated?.token === target?.token) return;
+      if (validated?.origin === target?.origin && validated?.token === target?.token && validated?.path === target?.path) return;
       target = validated;
       for (const cancel of active) cancel();
     },

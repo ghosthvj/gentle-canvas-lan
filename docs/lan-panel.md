@@ -16,7 +16,8 @@ Pi TUI import. This module has no runtime dependencies, I/O or timers.
   of the configured LAN endpoint remains the configuration layer's responsibility.
 - `render(width)` returns styled rows: a compact `CANVAS LAN` header followed by
   a `Open Design Canvas` (optionally decorated `- ▤ `) label and the complete
-  canonical LAN URL as plain wrapped text. The label also carries an OSC 8
+  canonical LAN URL as plain wrapped text. The extension normally supplies a
+  short stable LAN redirect instead, so the card link fits one terminal line. The label also carries an OSC 8
   destination for terminals that expose it, but plain URL text is the reliable
   Ctrl+click path in hosts such as Herdr. Labels are never explicitly underlined. The header is plain
   `▾ CANVAS LAN`/`▸ CANVAS LAN` so the native card applies its own glyph and

@@ -130,6 +130,21 @@ test('later MCP-style footer does not duplicate the LAN presentation', async () 
   await f.emit('session_shutdown');
 });
 
+test('card uses the stable short LAN capability while results keep the full LAN URL', async () => {
+  const short = 'http://192.168.1.20:34316/s/AbCdEfGhIjKlMnOp';
+  const full = 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/';
+  const footer = { render: () => ['STATUS'], invalidate() {} };
+  const host = { active: true, parts: new Map([['footer', footer]]), ownsHost: () => true };
+  const terminal = { [Symbol.for('gentle-pi.experimental-sidebar.state')]: host };
+  const f = fixture({ tuiMode: true, terminal, makeController: () => ({ async openCanvas() { return { running: true, lanUrl: full, shortUrl: short }; }, async shutdown() {} }) });
+  const result = await f.emit('tool_result', { toolName: 'gentle_design', details: { url }, content: [{ type: 'text', text: 'original' }] });
+  assert.match(result.content.at(-1).text, new RegExp(full));
+  await f.emit('agent_settled');
+  assert.match(host.parts.get('footer').render(60).join('\n'), new RegExp(short.replaceAll('.', '\\.')));
+  assert.doesNotMatch(host.parts.get('footer').render(60).join('\n'), /abcdefghijklmnop/);
+  await f.emit('session_shutdown');
+});
+
 test('automatic canvas opens keep links visible without redundant success notifications', async () => {
   const f = fixture();
   await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });

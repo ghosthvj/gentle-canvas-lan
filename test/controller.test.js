@@ -24,10 +24,12 @@ test('register starts lazily; rotates target and preserves selected path on fixe
   assert.equal(c.status().running, false);
   assert.equal(f.calls.starts, 0);
   const first = await c.openCanvas(url);
+  assert.match(first.shortUrl, /\/s\/[A-Za-z0-9_-]{16}$/);
   assert.equal(first.lanUrl, `http://canvas.test:34316/${token}/d/demo/?view=1`);
   const other = `http://127.0.0.1:40124/${'z'.repeat(32)}/`;
   const next = await c.openCanvas(other);
   assert.equal(next.port, first.port);
+  assert.equal(next.shortUrl, first.shortUrl, 'short capability survives canvas rotation');
   assert.equal(f.calls.starts, 1);
   assert.equal(f.calls.targets.at(-1).origin, 'http://127.0.0.1:40124');
   const before = c.status();

@@ -55,15 +55,15 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       ui.setWidget('canvas-lan-links', (tui, theme) => {
         const panel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth, decorated: true });
         const fallbackPanel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth });
-        panel.setUrl(links.lanUrl);
-        fallbackPanel.setUrl(links.lanUrl);
+        panel.setUrl(links.shortUrl ?? links.lanUrl);
+        fallbackPanel.setUrl(links.shortUrl ?? links.lanUrl);
         const attachment = attachSidebar(tui, panel);
         let disposed = false;
         const view = {
           update() {
             if (disposed) return;
-            panel.setUrl(links?.lanUrl ?? null);
-            fallbackPanel.setUrl(links?.lanUrl ?? null);
+            panel.setUrl(links?.shortUrl ?? links?.lanUrl ?? null);
+            fallbackPanel.setUrl(links?.shortUrl ?? links?.lanUrl ?? null);
             attachment?.invalidate();
             tui.requestRender();
           },
@@ -100,8 +100,8 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     if (!closed && ctx.hasUI) ctx.ui.notify(text, level);
   };
   const report = (ctx, state, announce = true) => {
-    if (!closed && state.running && state.lanUrl) {
-      links = { lanUrl: state.lanUrl };
+    if (!closed && state.running && (state.shortUrl || state.lanUrl)) {
+      links = { lanUrl: state.lanUrl, shortUrl: state.shortUrl };
       void track(showLinks(ctx));
     } else if (!state.running || !state.lanUrl) clearLinks();
     if (!announce) return;
@@ -118,7 +118,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     if (closed) return;
     try {
       const state = await getController().openCanvas(url);
-      if (!closed && state.running && state.lanUrl) links = { lanUrl: state.lanUrl };
+      if (!closed && state.running) links = { lanUrl: state.lanUrl, shortUrl: state.shortUrl };
       report(ctx, state, false);
       return state;
     } catch (error) {

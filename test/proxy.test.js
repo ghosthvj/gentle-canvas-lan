@@ -231,6 +231,38 @@ test('target validation preserves registration; rotation closes streams and reje
   assert.equal(changed.body, 'new upstream');
 });
 
+test('stable short capability redirects to the current canvas and never upstreams', async t => {
+  const f = await fixture(t);
+  const shortCode = 'AbCdEfGhIjKlMnOp';
+  const proxy = createCanvasProxy({ host: '127.0.0.1', port: 0, publicOrigin, shortCode });
+  await proxy.start();
+  t.after(() => proxy.stop());
+  assert.equal((await new Promise((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port: proxy.port, path: `/s/${shortCode}`,
+      headers: { host } }, res => { res.resume(); resolve({ status: res.statusCode, location: res.headers.location }); })
+      .on('error', reject);
+  })).status, 502);
+  proxy.setTarget({ origin: f.origin, token, url: `${f.origin}/${token}/d/demo/?view=2` });
+  const before = f.seen.length;
+  const redirected = await new Promise((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port: proxy.port, path: `/s/${shortCode}`,
+      headers: { host } }, res => { res.resume(); resolve({ status: res.statusCode, location: res.headers.location }); })
+      .on('error', reject);
+  });
+  assert.deepEqual(redirected, { status: 302, location: `${publicOrigin}/${token}/d/demo/?view=2` });
+  assert.equal(f.seen.length, before);
+  const get = path => new Promise((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port: proxy.port, path, headers: { host } }, res => {
+      res.resume();
+      resolve({ status: res.statusCode, location: res.headers.location });
+    }).on('error', reject);
+  });
+  assert.equal((await get('/s/wrongwrongwrong')).status, 404);
+  proxy.setTarget({ origin: f.origin, token });
+  assert.equal((await get(`/s/${shortCode}`)).status, 404, 'target without a public path cannot redirect');
+  await proxy.stop();
+});
+
 test('missing/unreachable target, bounded headers and aborted response are contained', { timeout: 12000 }, async t => {
   const f = await fixture(t);
   f.proxy.setTarget(null);

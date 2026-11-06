@@ -1,9 +1,13 @@
+import { randomBytes } from 'node:crypto';
 import { createCanvasRegistry } from './config.js';
 import { createCanvasProxy } from './proxy.js';
 
 /** Session-scoped controller. Stop invalidates starts immediately, before queueing cleanup. */
 export function createController({ config, createProxy = createCanvasProxy }) {
   const registry = createCanvasRegistry();
+  // Stable short capability for the card: fits one terminal line and redirects
+  // to whichever canvas is currently registered.
+  const shortCode = randomBytes(12).toString('base64url');
   let proxy = null;
   let running = false;
   let enabled = true;
@@ -24,6 +28,7 @@ export function createController({ config, createProxy = createCanvasProxy }) {
       port: running ? proxy.port : null,
       localUrl: current?.url ?? null,
       lanUrl: running && local ? `${config.publicOrigin}${local.pathname}${local.search}` : null,
+      shortUrl: running ? `${config.publicOrigin}/s/${shortCode}` : null,
     };
   };
   const close = async () => {
@@ -35,7 +40,7 @@ export function createController({ config, createProxy = createCanvasProxy }) {
   const ensure = ticket => enqueue(async () => {
     if (disposed || !enabled || ticket !== generation) return status();
     if (running) return status();
-    const next = createProxy(config);
+    const next = createProxy({ ...config, shortCode });
     next.setTarget(registry.current);
     proxy = next;
     try {
