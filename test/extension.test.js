@@ -81,6 +81,32 @@ test('TUI mounts LAN-only sidebar and restores footer when stopped', async () =>
   await f.emit('session_shutdown');
 });
 
+test('narrow fallback has a themed separator without altering sidebar or link target', async () => {
+  const footer = { render: () => ['STATUS'], invalidate() {} };
+  let eligible = true;
+  const host = { active: true, parts: new Map([['footer', footer]]), ownsHost: () => eligible };
+  const terminal = { [Symbol.for('gentle-pi.experimental-sidebar.state')]: host };
+  const f = fixture({ tuiMode: true, terminal });
+  await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
+  await f.emit('agent_settled');
+  assert.deepEqual(f.component().render(40), []);
+  assert.equal(host.parts.get('footer').render(40).some(row => /^─+$/.test(row)), false);
+  eligible = false;
+  host.active = false;
+  for (const width of [80, 40, 1]) {
+    const rows = f.component().render(width);
+    assert.equal(rows[0], '─'.repeat(width));
+    assert.equal(rows.length, 3);
+    assert.equal(rows[1], 'CANVAS LAN'.slice(0, width));
+    const target = rows[2].match(/\x1b\]8;;([^\x1b\x07]+)(?:\x1b\\|\x07)/)?.[1];
+    assert.equal(target, 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/');
+  }
+  eligible = true;
+  host.active = true;
+  assert.deepEqual(f.component().render(40), []);
+  await f.emit('session_shutdown');
+});
+
 test('later MCP-style footer does not duplicate the LAN presentation', async () => {
   const footer = { render: () => ['STATUS'], invalidate() {} };
   const host = { active: true, parts: new Map([['footer', footer]]) };

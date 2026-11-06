@@ -64,7 +64,12 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
             attachment?.invalidate();
             tui.requestRender();
           },
-          render(width) { return disposed || attachment?.isActive() ? [] : panel.render(width); },
+          render(width) {
+            if (disposed || attachment?.isActive()) return [];
+            const rows = panel.render(width);
+            if (!rows.length) return [];
+            return [theme.fg('border', '─'.repeat(Math.floor(width))), ...rows];
+          },
           invalidate() { panel.invalidate(); attachment?.invalidate(); },
           dispose() {
             if (disposed) return;
