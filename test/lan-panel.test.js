@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createLanPanel } from '../src/lan-panel.js';
 
 // Deliberately model wide characters and styled output without a runtime dependency.
-const unstyle = text => text.replace(/\x1b\[[0-9;]*m/g, '');
+const unstyle = text => text.replace(/\x1b\]8;;[^\x1b\x07]*(?:\x1b\\|\x07)/g, '').replace(/\x1b\[[0-9;]*m/g, '');
+const targets = text => [...text.matchAll(/\x1b\]8;;([^\x1b\x07]+)(?:\x1b\\|\x07)/g)].map(match => match[1]);
 const visibleWidth = text => [...unstyle(text)].reduce((width, char) =>
   width + (/[^\x00-\x7f]/u.test(char) ? 2 : 1), 0);
 const truncateToWidth = (text, width, ellipsis = '…') => {
@@ -38,13 +39,15 @@ const urls = [
 
 for (const width of [180, 48, 40, 20, 1]) {
   for (const [index, url] of urls.entries()) {
-    test(`width ${width}: complete canonical URL ${index}, compact header and no frame`, () => {
+    test(`width ${width}: full hyperlink destination ${index}, compact label and no frame`, () => {
       const { panel } = fixture();
       panel.setUrl(url);
       const rows = panel.render(width);
       const plain = rows.map(unstyle);
       assert.equal(plain[0], truncateToWidth('CANVAS LAN', width, ''));
-      assert.equal(plain.slice(1).join(''), new URL(url).href);
+      assert.equal(rows.length, 2);
+      assert.deepEqual(targets(rows[1]), [new URL(url).href]);
+      assert.equal(plain[1], truncateToWidth('Open canvas', width, ''));
       assert.ok(rows.every(row => visibleWidth(row) <= width));
       assert.ok(plain.every(row => row.length > 0 && !/[\x00-\x1f\x7f-\x9f]/u.test(row)));
       assert.ok(!plain.join('\n').includes('Local'));
@@ -68,7 +71,7 @@ test('idle, replacement, clearing and invalidation preserve public state semanti
   assert.equal(panel.digest(), active);
   panel.setUrl(urls[1]);
   assert.notEqual(panel.digest(), active);
-  assert.equal(panel.render(40).slice(1).map(unstyle).join(''), urls[1]);
+  assert.deepEqual(targets(panel.render(40)[1]), [urls[1]]);
   panel.setUrl(null);
   assert.equal(panel.digest(), empty);
   assert.deepEqual(panel.render(1), []);

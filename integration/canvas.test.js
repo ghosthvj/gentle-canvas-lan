@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createController } from '../src/controller.js';
+import { createLanPanel } from '../src/lan-panel.js';
 
 // Explicit local installation, never network resolution or automatic dependency installation.
 const root = process.env.GENTLE_PI_ROOT;
@@ -12,6 +13,7 @@ if (!root) throw new Error('Set GENTLE_PI_ROOT to the installed gentle-pi direct
 const { createJiti } = await import(pathToFileURL(join(root, 'node_modules/jiti/lib/jiti.mjs')).href);
 const jiti = createJiti(import.meta.url, { fsCache: false });
 const { startDesignCanvasServer } = await jiti.import(join(root, 'lib/design-canvas-server.ts'));
+const { truncateToWidth, visibleWidth } = await import(pathToFileURL(join(root, 'node_modules/@earendil-works/pi-tui/dist/index.js')).href);
 
 const publicOrigin = 'http://canvas.test:34316';
 function request(port, path, { method = 'GET', origin, body } = {}) {
@@ -58,6 +60,15 @@ test('real installed canvas: page, sandbox resources, POST, SSE, rotation and st
   canvas = await start();
   const state = await controller.openCanvas(canvas.url);
   const base = `/${canvas.token}/`;
+  const panel = createLanPanel({ theme: { fg: (_role, text) => text, bold: text => text }, truncateToWidth, visibleWidth });
+  panel.setUrl(state.lanUrl);
+  for (const width of [48, 40, 20]) {
+    const cardLine = truncateToWidth(panel.render(width)[1], width - 2);
+    const target = cardLine.match(/\x1b\]8;;([^\x1b\x07]+)(?:\x1b\\|\x07)/)?.[1];
+    assert.equal(target, state.lanUrl, 'terminal link target must retain the entire token and design path');
+    const parsed = new URL(target);
+    assert.equal((await request(state.port, parsed.pathname + parsed.search)).status, 200);
+  }
   const page = await request(state.port, `${base}d/demo/`);
   assert.equal(page.status, 200);
   assert.match(page.text, /<!doctype html>/i);
