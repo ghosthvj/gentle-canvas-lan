@@ -69,7 +69,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
             const rows = panel.render(width);
             if (!rows.length) return [];
             const columns = Math.floor(width);
-            const title = tools.truncateToWidth(' ✿ CANVAS LAN ', Math.max(0, columns - 1), '');
+            const title = tools.truncateToWidth(' ▤ CANVAS LAN ', Math.max(0, columns - 1), '');
             const remaining = Math.max(0, columns - 1 - tools.visibleWidth(title));
             const heading = theme.fg('border', '─')
               + theme.fg('dim', theme.bold(title))

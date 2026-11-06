@@ -95,7 +95,7 @@ test('narrow fallback has a themed separator without altering sidebar or link ta
   host.active = false;
   for (const width of [80, 40, 1]) {
     const rows = f.component().render(width);
-    if (width >= 40) assert.equal(rows[0], `─ ✿ CANVAS LAN ${'─'.repeat(width - 15)}`);
+    if (width >= 40) assert.equal(rows[0], `─ ▤ CANVAS LAN ${'─'.repeat(width - 15)}`);
     else assert.equal(rows[0], '─');
     assert.equal(rows.length, 2);
     assert.equal(rows[0].length, width);
