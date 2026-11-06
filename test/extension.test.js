@@ -63,6 +63,46 @@ test('successful tool result shapes register; errors/irrelevant results do not',
   await f.emit('session_shutdown');
 });
 
+test('tool result exposes both Local and LAN without replacing existing content or details', async () => {
+  const f = fixture();
+  const content = [{ type: 'text', text: `Design canvas: ${url}` }, { type: 'image', data: 'fixture', mimeType: 'image/png' }];
+  const details = { url, opened: false };
+  const event = { toolName: 'gentle_design', toolCallId: 'open-1', content, details, isError: false };
+  const result = await f.emit('tool_result', event);
+  assert.deepEqual(result.content.slice(0, 2), content);
+  assert.equal(result.content[2].text, `Canvas Local: ${url}\nCanvas LAN: http://192.168.1.20:34316/abcdefghijklmnop/d/demo/`);
+  assert.equal(result.details, undefined);
+  assert.deepEqual(event.content, content);
+  assert.equal(event.details, details);
+  await f.emit('tool_execution_end', { toolName: 'gentle_design', toolCallId: 'open-1', result: { content: result.content, details } });
+  assert.equal(f.calls.filter(x => Array.isArray(x)).length, 1);
+  assert.equal(f.notices.length, 1);
+  await f.emit('session_shutdown');
+});
+
+test('tool result leaves failed, unrelated and unavailable LAN results unchanged', async () => {
+  const f = fixture({ env: {} });
+  for (const event of [
+    { toolName: 'other', details: { url } },
+    { toolName: 'gentle_design', isError: true, details: { url } },
+    { toolName: 'gentle_design', details: {} },
+    { toolName: 'gentle_design', details: { url }, content: [{ type: 'text', text: 'Original' }] },
+  ]) assert.equal(await f.emit('tool_result', event), undefined);
+  assert.deepEqual(f.calls, []);
+  await f.emit('session_shutdown');
+});
+
+test('list tool result also includes both links; stopped proxy does not advertise LAN', async () => {
+  const f = fixture();
+  const result = await f.emit('tool_result', { toolName: 'gentle_design', details: { canvas: { running: true, url } }, content: [] });
+  assert.match(result.content[0].text, /^Canvas Local: http/);
+  assert.match(result.content[0].text, /\nCanvas LAN: http/);
+  await f.emit('session_shutdown');
+  const stopped = fixture({ makeController: () => ({ async openCanvas() { return { running: false, lanUrl: null }; }, async shutdown() {} }) });
+  assert.equal(await stopped.emit('tool_result', { toolName: 'gentle_design', details: { url }, content: [] }), undefined);
+  await stopped.emit('session_shutdown');
+});
+
 test('notice fallback preserves UI results and restores wrapper on shutdown', async () => {
   const f = fixture();
   await f.emit('session_start');

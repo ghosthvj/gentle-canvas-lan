@@ -4,12 +4,13 @@ import { createController } from './controller.js';
 const usage = 'Usage: /canvas:lan [start|status|stop]';
 const noticeUrl = /^Design canvas(?: refreshed)?: (http:\/\/(?:127\.0\.0\.1|localhost):\d+\/\S*)/m;
 
-/** Observe canvas events without modifying tool results or persisting capabilities. */
+/** Expose local and LAN links while preserving the canvas's original result fields. */
 export function installCanvasLan(pi, { env = process.env, makeController = createController } = {}) {
   let controller;
   let closed = false;
   const pending = new Set();
   const wrappers = new Map();
+  const observedCalls = new Set();
   const getController = () => controller ??= makeController({ config: readConfig(env) });
   const notify = (ctx, text, level = 'info') => {
     if (!closed && ctx.hasUI) ctx.ui.notify(text, level);
@@ -29,6 +30,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     try {
       const state = await getController().openCanvas(url);
       report(ctx, state);
+      return state;
     } catch (error) {
       // Config/validation errors are sanitized by the config module. Never echo raw URLs.
       notify(ctx, error instanceof TypeError ? error.message : 'Could not start the LAN canvas proxy. Check the configured address and port.', 'error');
@@ -73,7 +75,23 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       }
     },
   });
+  pi.on('tool_result', async (event, ctx) => {
+    if (closed || event.toolName !== 'gentle_design' || event.isError) return;
+    const url = event.details?.url ?? event.details?.canvas?.url;
+    if (typeof url !== 'string') return;
+    watch(ctx);
+    const state = await open(url, ctx);
+    if (event.toolCallId) observedCalls.add(event.toolCallId);
+    if (closed || !state?.running || !state.lanUrl) return;
+    return {
+      content: [...(event.content ?? []), {
+        type: 'text',
+        text: `Canvas Local: ${state.localUrl ?? url}\nCanvas LAN: ${state.lanUrl}`,
+      }],
+    };
+  });
   pi.on('tool_execution_end', async (event, ctx) => {
+    if (observedCalls.delete(event.toolCallId)) return;
     if (closed || event.toolName !== 'gentle_design' || event.isError) return;
     watch(ctx);
     const details = event.result?.details;
@@ -88,6 +106,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       if (ui.notify === wrapped) ui.notify = original;
     }
     wrappers.clear();
+    observedCalls.clear();
     // Dispose immediately: a pending start must observe cancellation, not become live.
     const stopping = controller?.shutdown();
     await Promise.allSettled([...pending]);
