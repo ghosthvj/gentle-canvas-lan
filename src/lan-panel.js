@@ -44,22 +44,21 @@ export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated
       const action = theme.fg('accent', label);
       const link = `\x1b]8;;${url}\x1b\\${action}\x1b]8;;\x1b\\`;
       const rows = [styledHeader];
-      if (label && visibleWidth(label) <= columns - prefixWidth) rows.push(prefix + link);
+      const urlRows = [];
       // Terminal hosts differ: Herdr exposes plain URL text to Ctrl+click but
       // not always OSC 8, so always show the complete capability as text too.
       for (let offset = 0; offset < url.length;) {
         // Slice raw text first: splitting a styled string could cut an ANSI code.
         const chunk = truncateToWidth(url.slice(offset, offset + columns), columns, '');
         if (!chunk) break;
-        rows.push(theme.fg('accent', chunk));
+        urlRows.push(theme.fg('accent', chunk));
         offset += chunk.length;
       }
-      if (osc8Probe && visibleWidth(url) <= columns) {
-        // Temporary A/B aid: same short URL wrapped in OSC 8, so terminals can
-        // be compared against the plain-text row above.
-        rows.push(`\x1b]8;;${url}\x1b\\${theme.fg('accent', url)}\x1b]8;;\x1b\\`);
-      }
-      return rows;
+      const labelRow = label && visibleWidth(label) <= columns - prefixWidth ? prefix + link : undefined;
+      // Probe mode A/B-tests plain URL text against the OSC 8 action label.
+      if (osc8Probe) return [...rows, ...urlRows, ...(labelRow ? [labelRow] : [])];
+      if (labelRow) rows.push(labelRow);
+      return [...rows, ...urlRows];
     },
 
     handleMouse(event) {
