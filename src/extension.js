@@ -11,11 +11,33 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
   const pending = new Set();
   const wrappers = new Map();
   const observedCalls = new Set();
+  let links = null;
+  const widgetUis = new Set();
+  const clearLinks = () => {
+    links = null;
+    for (const ui of widgetUis) ui.setWidget('canvas-lan-links', undefined);
+    widgetUis.clear();
+  };
+  const clearCanvas = () => {
+    controller?.clearCanvas();
+    clearLinks();
+  };
+  const showLinks = ctx => {
+    if (closed || !links || !ctx.hasUI || typeof ctx.ui.setWidget !== 'function') return;
+    widgetUis.add(ctx.ui);
+    ctx.ui.setWidget('canvas-lan-links', [
+      `Canvas Local: ${links.localUrl}`, `Canvas LAN: ${links.lanUrl}`,
+    ], { placement: 'belowEditor' });
+  };
   const getController = () => controller ??= makeController({ config: readConfig(env) });
   const notify = (ctx, text, level = 'info') => {
     if (!closed && ctx.hasUI) ctx.ui.notify(text, level);
   };
   const report = (ctx, state) => {
+    if (!closed && state.running && state.lanUrl && (state.localUrl || links?.localUrl)) {
+      links = { localUrl: state.localUrl ?? links.localUrl, lanUrl: state.lanUrl };
+      showLinks(ctx);
+    } else if (!state.running || !state.lanUrl) clearLinks();
     notify(ctx, state.running
       ? state.lanUrl ? `Canvas LAN: ${state.lanUrl}` : 'Canvas LAN proxy running. Open a design to get its URL.'
       : 'Canvas LAN proxy is not running. Use /canvas:lan start to enable it.');
@@ -29,6 +51,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     if (closed) return;
     try {
       const state = await getController().openCanvas(url);
+      if (!closed && state.running && state.lanUrl) links = { localUrl: state.localUrl ?? url, lanUrl: state.lanUrl };
       report(ctx, state);
       return state;
     } catch (error) {
@@ -45,7 +68,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       if (!closed && typeof text === 'string') {
         const url = text.match(noticeUrl)?.[1];
         if (url) void open(url, ctx);
-        else if (text === 'Design canvas stopped.' || text === 'No design canvas is running.') controller?.clearCanvas();
+        else if (text === 'Design canvas stopped.' || text === 'No design canvas is running.') clearCanvas();
       }
       return result;
     };
@@ -65,6 +88,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       try {
         if (action === 'status') return report(ctx, controller?.status() ?? { running: false });
         if (action === 'stop') {
+          clearLinks();
           if (controller) await controller.stop();
           else await getController().stop();
           return notify(ctx, 'Canvas LAN proxy stopped. Automatic start is disabled until /canvas:lan start.');
@@ -95,12 +119,14 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     if (closed || event.toolName !== 'gentle_design' || event.isError) return;
     watch(ctx);
     const details = event.result?.details;
-    if (details?.stopped === true || details?.canvas?.running === false) controller?.clearCanvas();
+    if (details?.stopped === true || details?.canvas?.running === false) clearCanvas();
     const url = details?.url ?? details?.canvas?.url;
     if (typeof url === 'string') await open(url, ctx);
   });
+  pi.on('agent_settled', (_event, ctx) => showLinks(ctx));
   pi.on('session_shutdown', async () => {
     closed = true;
+    clearLinks();
     for (const [ui, { original, wrapped }] of wrappers) {
       // Preserve a later extension's wrapper rather than clobbering its ownership.
       if (ui.notify === wrapped) ui.notify = original;

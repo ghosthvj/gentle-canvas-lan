@@ -35,6 +35,8 @@ Open a design with `/gentle:design` or the `gentle_design` tool. The extension s
 
 Successful `gentle_design` open/list results also include a text block with **Canvas Local** and **Canvas LAN**. Both links are available to the agent when composing its final response: Local is for tools/browser checks on the server, LAN is for your other devices. The original tool content and details remain unchanged. This supplies both addresses; it does not rewrite or guarantee the model's final wording. No LAN link is added when the proxy is stopped or cannot start.
 
+In a UI session, a persistent **Canvas Local / Canvas LAN** widget is also shown below the editor and refreshed when the agent settles. It remains visible independently of further tool calls or what the final assistant response says. This is a UI block, not text inserted into the assistant's reply or an extra stored conversation message. Stopping the proxy/canvas or shutting down the session clears it; a restarted canvas updates both links. The target frontend must support Pi's `setWidget` API; non-UI modes cannot display it.
+
 ## Commands
 
 | Command | Behavior |

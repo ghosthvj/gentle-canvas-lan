@@ -9,6 +9,7 @@ function fixture(options = {}) {
   const commands = new Map();
   const notices = [];
   const calls = [];
+  const widgets = new Map();
   let running = false;
   const state = () => ({ running, lanUrl: running ? 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/' : null });
   const controller = {
@@ -20,11 +21,14 @@ function fixture(options = {}) {
     async shutdown() { calls.push('shutdown'); running = false; },
   };
   const pi = { on: (event, fn) => handlers.set(event, fn), registerCommand: (name, spec) => commands.set(name, spec) };
-  const ui = { notify(text, level) { notices.push([text, level]); return 'original-result'; } };
+  const ui = {
+    notify(text, level) { notices.push([text, level]); return 'original-result'; },
+    setWidget(key, lines, options) { if (lines === undefined) widgets.delete(key); else widgets.set(key, { lines, options }); },
+  };
   const original = ui.notify;
   const ctx = { hasUI: true, ui };
   installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, makeController: () => { calls.push('construct'); return controller; }, ...options });
-  return { pi, calls, notices, ctx, original, commands, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
+  return { pi, calls, notices, widgets, ctx, original, commands, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
 }
 
 test('entry registers without opening resources; command help/status/start/stop', async () => {
@@ -61,6 +65,49 @@ test('successful tool result shapes register; errors/irrelevant results do not',
   await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { stopped: true } } });
   assert.equal(f.calls.at(-1), 'clear');
   await f.emit('session_shutdown');
+});
+
+test('settled UI shows both links even when the final assistant omits LAN', async () => {
+  const f = fixture();
+  await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
+  await f.emit('tool_execution_end', { toolName: 'other', result: { content: [] } });
+  await f.emit('message_end', { message: { role: 'assistant', content: [{ type: 'text', text: `Canvas: ${url}` }] } });
+  await f.emit('agent_settled');
+  assert.deepEqual(f.widgets.get('canvas-lan-links'), {
+    lines: [`Canvas Local: ${url}`, 'Canvas LAN: http://192.168.1.20:34316/abcdefghijklmnop/d/demo/'],
+    options: { placement: 'belowEditor' },
+  });
+  const before = f.calls.length;
+  await f.emit('agent_settled');
+  assert.equal(f.calls.length, before);
+  await f.emit('session_shutdown');
+  assert.equal(f.widgets.size, 0);
+});
+
+test('stop and canvas revocation clear links; settled does not restore stale widgets', async () => {
+  for (const revoke of ['proxy-stop', 'tool-stop', 'list-stopped', 'notice-stop']) {
+    const f = fixture();
+    await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
+    await f.emit('agent_settled');
+    assert.equal(f.widgets.size, 1);
+    if (revoke === 'proxy-stop') await f.commands.get('canvas:lan').handler('stop', f.ctx);
+    if (revoke === 'tool-stop') await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { stopped: true } } });
+    if (revoke === 'list-stopped') await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { canvas: { running: false } } } });
+    if (revoke === 'notice-stop') f.ctx.ui.notify('Design canvas stopped.', 'info');
+    await f.emit('agent_settled');
+    assert.equal(f.widgets.size, 0, revoke);
+    await f.emit('session_shutdown');
+  }
+});
+
+test('settled without a running canvas does not create widgets or controllers', async () => {
+  const f = fixture();
+  await f.emit('agent_settled');
+  assert.deepEqual(f.calls, []);
+  assert.equal(f.widgets.size, 0);
+  await f.emit('session_shutdown');
+  await f.emit('agent_settled');
+  assert.equal(f.widgets.size, 0);
 });
 
 test('tool result exposes both Local and LAN without replacing existing content or details', async () => {
