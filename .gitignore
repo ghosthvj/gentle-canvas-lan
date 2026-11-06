@@ -1,0 +1,13 @@
+# Local harness state (pre-existing)
+.atl/
+
+# Dependencies and generated output
+node_modules/
+coverage/
+dist/
+*.log
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
