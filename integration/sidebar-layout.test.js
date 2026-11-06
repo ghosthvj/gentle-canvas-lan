@@ -9,7 +9,7 @@ const rootPath = process.env.GENTLE_PI_ROOT;
 if (!rootPath) throw new Error('Set GENTLE_PI_ROOT to the installed gentle-pi directory.');
 const tuiEntry = join(rootPath, 'node_modules/@earendil-works/pi-tui/dist/index.js');
 const { ScrollView, VStack, truncateToWidth, visibleWidth } = await import(pathToFileURL(tuiEntry).href);
-const { renderLayoutFrame } = await import(pathToFileURL(join(rootPath, 'node_modules/@earendil-works/pi-tui/dist/layout.js')).href);
+const { getScrollViewBox, renderLayoutFrame } = await import(pathToFileURL(join(rootPath, 'node_modules/@earendil-works/pi-tui/dist/layout.js')).href);
 const { createJiti } = await import(pathToFileURL(join(rootPath, 'node_modules/jiti/lib/jiti.mjs')).href);
 const jiti = createJiti(import.meta.url, { fsCache: false, alias: { '@earendil-works/pi-tui': tuiEntry } });
 const { installSidebar } = await jiti.import(join(rootPath, 'lib/shell-sidebar-layout.ts'));
@@ -50,4 +50,32 @@ test('installed sidebar layout renders LAN during prepare and cached frames, wit
   assert.match(frame(), /CANVAS LAN/);
   assert.equal(sidebarState(host).active, true);
   assert.deepEqual(fallback.render(80), []);
+
+  // Drive the real rail hit map with a synthetic press+click on the header row.
+  const NODE = Symbol.for('@earendil-works/pi-tui/layout-node');
+  const node = host.layoutRoot[NODE]();
+  const hstack = node.type === 'hstack' ? node : node.entries[1].component[NODE]();
+  const scroll = hstack.entries[1].component;
+  assert.ok(scroll?.handleMouse, 'rail ScrollView is present');
+  const rendered = renderLayoutFrame(host.layoutRoot, host.terminal.columns, 28, () => {});
+  const railBox = getScrollViewBox(rendered, scroll);
+  const headerY = rendered.lines.findIndex(line => line.includes('CANVAS LAN'));
+  assert.ok(headerY >= 0);
+  const click = type => ({ type, button: 'left', x: 2,
+    y: headerY - railBox.rect.y + scroll.scrollTop,
+    width: railBox.rect.width, height: railBox.rect.height, screenX: railBox.rect.x + 2, screenY: headerY,
+    shift: false, alt: false, ctrl: false });
+  assert.equal(attachment.isActive(), true);
+  scroll.handleMouse(click('press'));
+  assert.match(frame(), /▾ ▤ CANVAS LAN/);
+  const collapsedResult = scroll.handleMouse(click('click'));
+  assert.equal(collapsedResult?.handled, true);
+  const collapsed = frame();
+  assert.match(collapsed, /▸ ▤ CANVAS LAN/);
+  assert.doesNotMatch(collapsed, /http:\/\/192\.168\.1\.20/);
+  assert.equal(attachment.isActive(), true);
+  scroll.handleMouse(click('click'));
+  const expanded = frame();
+  assert.match(expanded, /▾ ▤ CANVAS LAN/);
+  assert.match(expanded, /Open canvas/);
 });

@@ -3,6 +3,7 @@ const invalidUrl = 'Expected a control-free HTTP(S) LAN URL or null.';
 /** A rail-owned, LAN-only component; terminal helpers come from the active host. */
 export function createLanPanel({ theme, truncateToWidth, visibleWidth }) {
   let url = null;
+  let collapsed = false;
 
   return {
     setUrl(value) {
@@ -30,7 +31,8 @@ export function createLanPanel({ theme, truncateToWidth, visibleWidth }) {
     render(width) {
       const columns = Math.floor(width);
       if (!url || !Number.isFinite(columns) || columns < 1) return [];
-      const header = truncateToWidth('CANVAS LAN', columns, '');
+      const header = truncateToWidth(`${collapsed ? '▸' : '▾'} ▤ CANVAS LAN`, columns, '');
+      if (collapsed) return [theme.fg('dim', theme.bold(header))];
       const label = truncateToWidth('Open canvas', columns, '');
       if (!label || visibleWidth(label) > columns) return [];
       // Display text is width-bounded, but the terminal opens the full target.
@@ -39,8 +41,15 @@ export function createLanPanel({ theme, truncateToWidth, visibleWidth }) {
       return [theme.fg('dim', theme.bold(header)), link];
     },
 
+    handleMouse(event) {
+      if (!url || event.y !== 0 || event.x < 0 || event.x >= event.width || event.height < 1 || event.button !== 'left') return undefined;
+      if (event.type === 'press') return { handled: true };
+      if (event.type !== 'click') return undefined;
+      collapsed = !collapsed;
+      return { handled: true, render: true };
+    },
     // No paint cache: the active theme is consulted on every render.
     invalidate() {},
-    digest() { return url ?? ''; },
+    digest() { return JSON.stringify([url, collapsed]); },
   };
 }

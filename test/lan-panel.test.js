@@ -6,7 +6,7 @@ import { createLanPanel } from '../src/lan-panel.js';
 const unstyle = text => text.replace(/\x1b\]8;;[^\x1b\x07]*(?:\x1b\\|\x07)/g, '').replace(/\x1b\[[0-9;]*m/g, '');
 const targets = text => [...text.matchAll(/\x1b\]8;;([^\x1b\x07]+)(?:\x1b\\|\x07)/g)].map(match => match[1]);
 const visibleWidth = text => [...unstyle(text)].reduce((width, char) =>
-  width + (/[^\x00-\x7f]/u.test(char) ? 2 : 1), 0);
+  width + (/[▾▸▤]/u.test(char) ? 1 : /[^\x00-\x7f]/u.test(char) ? 2 : 1), 0);
 const truncateToWidth = (text, width, ellipsis = '…') => {
   if (visibleWidth(text) <= width) return text;
   let result = '';
@@ -44,7 +44,7 @@ for (const width of [180, 48, 40, 20, 1]) {
       panel.setUrl(url);
       const rows = panel.render(width);
       const plain = rows.map(unstyle);
-      assert.equal(plain[0], truncateToWidth('CANVAS LAN', width, ''));
+      assert.equal(plain[0], truncateToWidth('▾ ▤ CANVAS LAN', width, ''));
       assert.equal(rows.length, 2);
       assert.deepEqual(targets(rows[1]), [new URL(url).href]);
       assert.equal(plain[1], truncateToWidth('Open canvas', width, ''));
@@ -56,6 +56,24 @@ for (const width of [180, 48, 40, 20, 1]) {
     });
   }
 }
+
+test('header press claims and click toggles; link and unrelated mouse events remain untouched', () => {
+  const { panel } = fixture();
+  panel.setUrl(urls[0]);
+  const before = panel.digest();
+  const event = { x: 0, y: 0, width: 40, height: 2, button: 'left' };
+  assert.deepEqual(panel.handleMouse({ ...event, type: 'press' }), { handled: true });
+  assert.equal(panel.digest(), before);
+  assert.deepEqual(panel.handleMouse({ ...event, type: 'click' }), { handled: true, render: true });
+  assert.notEqual(panel.digest(), before);
+  assert.equal(panel.render(40).length, 1);
+  assert.match(unstyle(panel.render(40)[0]), /^▸ ▤ CANVAS LAN/);
+  assert.equal(panel.handleMouse({ ...event, type: 'click', y: 1 }), undefined);
+  assert.equal(panel.handleMouse({ ...event, type: 'click', button: 'right' }), undefined);
+  assert.deepEqual(panel.handleMouse({ ...event, type: 'click', height: 1 }), { handled: true, render: true });
+  assert.equal(panel.render(40).length, 2);
+  assert.deepEqual(targets(panel.render(40)[1]), [urls[0]]);
+});
 
 test('idle, replacement, clearing and invalidation preserve public state semantics', () => {
   const { panel } = fixture();
