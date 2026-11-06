@@ -44,10 +44,10 @@ for (const width of [180, 48, 40, 20, 1]) {
       panel.setUrl(url);
       const rows = panel.render(width);
       const plain = rows.map(unstyle);
-      assert.equal(plain[0], truncateToWidth('▾ ▤ CANVAS LAN', width, ''));
+      assert.equal(plain[0], truncateToWidth('▾ CANVAS LAN', width, ''));
       assert.equal(rows.length, 2);
       assert.deepEqual(targets(rows[1]), [new URL(url).href]);
-      assert.equal(plain[1], truncateToWidth('Open canvas', width, ''));
+      assert.equal(plain[1], truncateToWidth('Open Design Canvas', width, ''));
       assert.ok(rows.every(row => visibleWidth(row) <= width));
       assert.ok(plain.every(row => row.length > 0 && !/[\x00-\x1f\x7f-\x9f]/u.test(row)));
       assert.ok(!plain.join('\n').includes('Local'));
@@ -67,7 +67,7 @@ test('header press claims and click toggles; link and unrelated mouse events rem
   assert.deepEqual(panel.handleMouse({ ...event, type: 'click' }), { handled: true, render: true });
   assert.notEqual(panel.digest(), before);
   assert.equal(panel.render(40).length, 1);
-  assert.match(unstyle(panel.render(40)[0]), /^▸ ▤ CANVAS LAN/);
+  assert.match(unstyle(panel.render(40)[0]), /^▸ CANVAS LAN/);
   assert.equal(panel.handleMouse({ ...event, type: 'click', y: 1 }), undefined);
   assert.equal(panel.handleMouse({ ...event, type: 'click', button: 'right' }), undefined);
   assert.deepEqual(panel.handleMouse({ ...event, type: 'click', height: 1 }), { handled: true, render: true });

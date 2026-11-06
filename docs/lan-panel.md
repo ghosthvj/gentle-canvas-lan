@@ -15,8 +15,10 @@ Pi TUI import. This module has no runtime dependencies, I/O or timers.
   rejected **before** parsing; URLs with credentials are also rejected. Validation
   of the configured LAN endpoint remains the configuration layer's responsibility.
 - `render(width)` returns styled rows: a compact `CANVAS LAN` header followed by
-  a short `Open canvas` label whose OSC 8 hyperlink target is the complete
-  canonical LAN URL. It never adds another address, frame, blank
+  a `Open Design Canvas` (optionally decorated `- ▤ `) label whose OSC 8
+  hyperlink target is the complete canonical LAN URL. The header is plain
+  `▾ CANVAS LAN`/`▸ CANVAS LAN` so the native card applies its own glyph and
+  title color; the document glyph lives in the body label. It never adds another address, frame, blank
   padding, shortcuts or clipboard affordances. The shell owns the surrounding rail.
 - Every positive integer column budget is supported, including one column. The
   header and label clip without an ellipsis; the hidden hyperlink destination

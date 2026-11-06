@@ -1,7 +1,7 @@
 const invalidUrl = 'Expected a control-free HTTP(S) LAN URL or null.';
 
 /** A rail-owned, LAN-only component; terminal helpers come from the active host. */
-export function createLanPanel({ theme, truncateToWidth, visibleWidth }) {
+export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated = false }) {
   let url = null;
   let collapsed = false;
 
@@ -31,14 +31,16 @@ export function createLanPanel({ theme, truncateToWidth, visibleWidth }) {
     render(width) {
       const columns = Math.floor(width);
       if (!url || !Number.isFinite(columns) || columns < 1) return [];
-      const header = truncateToWidth(`${collapsed ? '▸' : '▾'} ▤ CANVAS LAN`, columns, '');
-      if (collapsed) return [theme.fg('dim', theme.bold(header))];
-      const label = truncateToWidth('Open canvas', columns, '');
+      // Plain header: the native card extracts ▾/▸ and paints the title like
+      // every other section; tinted rails print it verbatim.
+      const header = truncateToWidth(`${collapsed ? '▸' : '▾'} CANVAS LAN`, columns, '');
+      if (collapsed) return [header];
+      const label = truncateToWidth(decorated ? '- ▤ Open Design Canvas' : 'Open Design Canvas', columns, '');
       if (!label || visibleWidth(label) > columns) return [];
       // Display text is width-bounded, but the terminal opens the full target.
       // Never rely on auto-detection of a URL split/truncated by sidebar chrome.
       const link = `\x1b]8;;${url}\x1b\\${theme.fg('accent', label)}\x1b]8;;\x1b\\`;
-      return [theme.fg('dim', theme.bold(header)), link];
+      return [header, link];
     },
 
     handleMouse(event) {

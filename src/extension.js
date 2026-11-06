@@ -53,20 +53,23 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       }
       if (closed || !links || generation !== presentationGeneration) return;
       ui.setWidget('canvas-lan-links', (tui, theme) => {
-        const panel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth });
+        const panel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth, decorated: true });
+        const fallbackPanel = createLanPanel({ theme, truncateToWidth: tools.truncateToWidth, visibleWidth: tools.visibleWidth });
         panel.setUrl(links.lanUrl);
+        fallbackPanel.setUrl(links.lanUrl);
         const attachment = attachSidebar(tui, panel);
         let disposed = false;
         const view = {
           update() {
             if (disposed) return;
             panel.setUrl(links?.lanUrl ?? null);
+            fallbackPanel.setUrl(links?.lanUrl ?? null);
             attachment?.invalidate();
             tui.requestRender();
           },
           render(width) {
             if (disposed || attachment?.isActive()) return [];
-            const rows = panel.render(width);
+            const rows = fallbackPanel.render(width);
             if (!rows.length) return [];
             const columns = Math.floor(width);
             const title = tools.truncateToWidth(' ▤ CANVAS LAN ', Math.max(0, columns - 1), '');
@@ -76,7 +79,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
               + theme.fg('border', '─'.repeat(remaining));
             return [heading, ...rows.slice(1)];
           },
-          invalidate() { panel.invalidate(); attachment?.invalidate(); },
+          invalidate() { panel.invalidate(); fallbackPanel.invalidate(); attachment?.invalidate(); },
           dispose() {
             if (disposed) return;
             disposed = true;
