@@ -1,7 +1,7 @@
 const invalidUrl = 'Expected a control-free HTTP(S) LAN URL or null.';
 
 /** A rail-owned, LAN-only component; terminal helpers come from the active host. */
-export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated = false, hyperlinks = true }) {
+export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated = false }) {
   let url = null;
   let collapsed = false;
 
@@ -41,24 +41,20 @@ export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated
       const prefix = truncateToWidth(decorated ? '- ▤ ' : '', columns, '');
       const prefixWidth = visibleWidth(prefix);
       const label = truncateToWidth('Open Design Canvas', Math.max(1, columns - prefixWidth), '');
-      if (!label || visibleWidth(label) > columns - prefixWidth) return [];
-      const underline = theme.underline ?? (text => text);
-      const action = theme.fg('accent', underline(label));
-      if (!hyperlinks) {
-        // Terminal ignores OSC 8: expose the full capability as selectable text.
-        const rows = [styledHeader, prefix + action];
-        const plain = theme.fg('accent', url);
-        for (let offset = 0; offset < plain.length;) {
-          const chunk = truncateToWidth(plain.slice(offset, offset + columns), columns, '');
-          if (!chunk) break;
-          rows.push(chunk);
-          offset += chunk.length;
-        }
-        return rows;
-      }
-      // Only the action text is underlined; decoration stays outside the link.
+      const action = theme.fg('accent', label);
       const link = `\x1b]8;;${url}\x1b\\${action}\x1b]8;;\x1b\\`;
-      return [styledHeader, prefix + link];
+      const rows = [styledHeader];
+      if (label && visibleWidth(label) <= columns - prefixWidth) rows.push(prefix + link);
+      // Terminal hosts differ: Herdr exposes plain URL text to Ctrl+click but
+      // not always OSC 8, so always show the complete capability as text too.
+      for (let offset = 0; offset < url.length;) {
+        // Slice raw text first: splitting a styled string could cut an ANSI code.
+        const chunk = truncateToWidth(url.slice(offset, offset + columns), columns, '');
+        if (!chunk) break;
+        rows.push(theme.fg('accent', chunk));
+        offset += chunk.length;
+      }
+      return rows;
     },
 
     handleMouse(event) {

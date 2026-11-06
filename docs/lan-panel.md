@@ -15,8 +15,10 @@ Pi TUI import. This module has no runtime dependencies, I/O or timers.
   rejected **before** parsing; URLs with credentials are also rejected. Validation
   of the configured LAN endpoint remains the configuration layer's responsibility.
 - `render(width)` returns styled rows: a compact `CANVAS LAN` header followed by
-  a `Open Design Canvas` (optionally decorated `- ▤ `) label whose OSC 8
-  hyperlink target is the complete canonical LAN URL. The header is plain
+  a `Open Design Canvas` (optionally decorated `- ▤ `) label and the complete
+  canonical LAN URL as plain wrapped text. The label also carries an OSC 8
+  destination for terminals that expose it, but plain URL text is the reliable
+  Ctrl+click path in hosts such as Herdr. Labels are never explicitly underlined. The header is plain
   `▾ CANVAS LAN`/`▸ CANVAS LAN` so the native card applies its own glyph and
   title color; the document glyph lives in the body label. It never adds another address, frame, blank
   padding, shortcuts or clipboard affordances. The shell owns the surrounding rail.
@@ -32,12 +34,11 @@ Pi TUI import. This module has no runtime dependencies, I/O or timers.
 
 ## Presentation limits
 
-Opening the card link requires a terminal that supports OSC 8 hyperlinks (and
-allows them through any terminal multiplexer). The entry passes Pi's detected
-hyperlink capability into the panel. Without it, the action label stays visibly
-underlined but the panel renders the complete canonical LAN URL as selectable
-text beneath it; links are never emitted where the terminal would ignore them.
-`/canvas:lan status` and the tool output always carry the plain URL. The parent owns sidebar availability, hidden/narrow rail
+Ctrl+click the visible URL. Herdr 0.9.5 exposes plain (including wrapped) URL
+text to its Ctrl+click handler but did not expose this card's OSC 8 label in
+practice, so the panel always renders the URL as selectable text; capability
+detection alone was not a reliable proxy for clickability. `/canvas:lan status`
+and the tool output also carry the plain URL. The parent owns sidebar availability, hidden/narrow rail
 handling and fallback placement. This renderer does not claim inheritance of all
 shell visual settings or implement the fallback widget itself.
 

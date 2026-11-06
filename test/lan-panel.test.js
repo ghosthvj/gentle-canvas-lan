@@ -46,9 +46,14 @@ for (const width of [180, 48, 40, 20, 1]) {
       const rows = panel.render(width);
       const plain = rows.map(unstyle);
       assert.equal(plain[0], truncateToWidth('▾ CANVAS LAN', width, ''));
-      assert.equal(rows.length, 2);
-      assert.deepEqual(targets(rows[1]), [new URL(url).href]);
-      assert.equal(plain[1], truncateToWidth('Open Design Canvas', width, ''));
+      const label = truncateToWidth('Open Design Canvas', width, '');
+      if (label) {
+        assert.deepEqual(targets(rows[1]), [new URL(url).href]);
+        assert.equal(plain[1], label);
+        assert.equal(plain.slice(2).join(''), new URL(url).href);
+      } else {
+        assert.equal(plain.slice(1).join(''), new URL(url).href);
+      }
       assert.ok(rows.every(row => visibleWidth(row) <= width));
       assert.ok(plain.every(row => row.length > 0 && !/[\x00-\x1f\x7f-\x9f]/u.test(row)));
       assert.ok(!plain.join('\n').includes('Local'));
@@ -72,8 +77,9 @@ test('header press claims and click toggles; link and unrelated mouse events rem
   assert.equal(panel.handleMouse({ ...event, type: 'click', y: 1 }), undefined);
   assert.equal(panel.handleMouse({ ...event, type: 'click', button: 'right' }), undefined);
   assert.deepEqual(panel.handleMouse({ ...event, type: 'click', height: 1 }), { handled: true, render: true });
-  assert.equal(panel.render(40).length, 2);
+  assert.ok(panel.render(40).length > 2);
   assert.deepEqual(targets(panel.render(40)[1]), [urls[0]]);
+  assert.equal(unstyle(panel.render(40).slice(2).join('')), urls[0]);
 });
 
 test('decorated card keeps dash and glyph outside the underlined link', () => {
@@ -93,15 +99,14 @@ test('decorated card keeps dash and glyph outside the underlined link', () => {
   }
 });
 
-test('terminal without OSC 8 shows the complete selectable LAN URL and explicit underline', () => {
+test('visible URL text is never underlined and stays complete for Ctrl+click', () => {
   const theme = { fg: (_role, text) => text, bold: text => text, underline: text => `\x1b[4m${text}\x1b[0m` };
-  const panel = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true, hyperlinks: false });
+  const panel = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true });
   panel.setUrl(urls[1]);
   for (const width of [48, 20]) {
     const rows = panel.render(width);
     const plain = rows.map(unstyle);
-    assert.equal(rows.join('').includes('\x1b]8;;'), false);
-    assert.match(rows[1], /\x1b\[4mOpen Design/);
+    assert.equal(plain.join('').includes('\x1b[4m'), false);
     assert.equal(plain.slice(2).join(''), new URL(urls[1]).href);
     assert.ok(rows.every(row => visibleWidth(row) <= width));
   }
