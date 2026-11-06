@@ -10,12 +10,13 @@
   "license": "UNLICENSED",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "test:canvas": "node --test integration/canvas.test.js"
+    "test:canvas": "node --test integration/*.test.js"
   },
   "pi": {
     "extensions": ["./extensions/canvas-lan.js"]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   }
 }

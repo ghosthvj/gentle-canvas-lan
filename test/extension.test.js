@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import install from '../extensions/canvas-lan.js';
 import { installCanvasLan } from '../src/extension.js';
 
 const url = 'http://127.0.0.1:41234/abcdefghijklmnop/d/demo/';
@@ -44,7 +43,6 @@ function fixture(options = {}) {
 }
 
 test('entry registers without opening resources; command help/status/start/stop', async () => {
-  assert.equal(typeof install, 'function');
   const f = fixture();
   assert.deepEqual(f.calls, []);
   await f.emit('session_start');

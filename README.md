@@ -37,7 +37,7 @@ Successful `gentle_design` open/list results also include a text block with **Ca
 
 In compatible fullscreen Gentle Shell sessions, a **CANVAS LAN** card joins the sidebar through a guarded compatibility adapter. It uses semantic theme colors and contains only the LAN URL. Long links wrap without dropping their token. The previous Status footer and its mouse handling are preserved, and the adapter restores it only while it still owns the slot.
 
-This is a **private host contract**, not an official sidebar API. No installed files are modified or imported by absolute path. If the host is incompatible, regular-mode, narrow/inactive, or a newer component replaces the adapter, the same LAN-only view falls back below the editor. Existing shell components may control visibility of their footer slot; not every shell preference is inherited by the add-on. A UI widget factory supplies TUI/theme and owns disposal; non-UI modes cannot display it. There is no extra stored conversation message. Stopping the proxy/canvas or shutting down the session removes the view; reopening a restarted canvas updates the link.
+This is a **private host contract**, not an official sidebar API. No installed files are modified or imported by absolute path. Host TUI helpers are imported at the extension entry and passed into the core installer, so native JavaScript dependencies do not bypass Pi's module aliases through a deferred import. If the host is incompatible, regular-mode, narrow/inactive, or a newer component replaces the adapter, the same LAN-only view falls back below the editor. Existing shell components may control visibility of their footer slot; not every shell preference is inherited by the add-on. A UI widget factory supplies TUI/theme and owns disposal; non-UI modes cannot display it. There is no extra stored conversation message. Stopping the proxy/canvas or shutting down the session removes the view; reopening a restarted canvas updates the link.
 
 ## Commands
 
@@ -86,7 +86,7 @@ Real installed-canvas checks are separate and need the local Gentle Shell instal
 GENTLE_PI_ROOT=/absolute/path/to/gentle-pi npm run test:canvas
 ```
 
-That integration command uses the installation's jiti loader with disk caching disabled and creates temporary fixture designs under excluded `.test-tmp/`. It does not modify installed sources, user designs, host settings or networking. Missing installation is an explicit error, not a silent skip.
+That integration command checks both the installed canvas server and the actual extension entry through Jiti with the host's `pi-tui` alias and disk caching disabled. It asserts that a TUI open mounts the component factory rather than the plain-string fallback. It creates temporary fixture designs under excluded `.test-tmp/`. It does not modify installed sources, user designs, host settings or networking. Missing installation is an explicit error, not a silent skip.
 
 After automated checks, manually verify from another LAN device: open a design, render its artboard/resources, add/send a fixture comment, observe live updates, restart the canvas and use its new link, confirm the old link fails, then stop the proxy and confirm the port is inaccessible. Do not run these against valuable designs or an agent session where fixture implementation requests would be undesirable.
 
