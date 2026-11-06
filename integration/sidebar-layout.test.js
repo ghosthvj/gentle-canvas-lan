@@ -78,6 +78,8 @@ test('installed sidebar layout renders LAN during prepare and cached frames, wit
   const expanded = frame();
   assert.match(expanded, /▾ CANVAS LAN/);
   assert.match(expanded, /Open Design Canvas/);
-  assert.match(expanded, /- ▤ Open Design Canvas/);
+  assert.match(expanded, /- ▤ /);
+  assert.match(expanded, /Open Design Canvas/);
+  assert.doesNotMatch(expanded, /- ▤ Open Design Canvas/);
   assert.doesNotMatch(expanded, /▾ ▤/);
 });

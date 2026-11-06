@@ -34,13 +34,17 @@ export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated
       // Plain header: the native card extracts ▾/▸ and paints the title like
       // every other section; tinted rails print it verbatim.
       const header = truncateToWidth(`${collapsed ? '▸' : '▾'} CANVAS LAN`, columns, '');
-      if (collapsed) return [header];
-      const label = truncateToWidth(decorated ? '- ▤ Open Design Canvas' : 'Open Design Canvas', columns, '');
-      if (!label || visibleWidth(label) > columns) return [];
-      // Display text is width-bounded, but the terminal opens the full target.
-      // Never rely on auto-detection of a URL split/truncated by sidebar chrome.
+      // Native cards paint headers with the INFO accent role; carrying the
+      // normal text role and weight here matches the other panels' titles.
+      const styledHeader = theme.fg('text', theme.bold(header));
+      if (collapsed) return [styledHeader];
+      const prefix = truncateToWidth(decorated ? '- ▤ ' : '', columns, '');
+      const prefixWidth = visibleWidth(prefix);
+      const label = truncateToWidth('Open Design Canvas', Math.max(1, columns - prefixWidth), '');
+      if (!label || visibleWidth(label) > columns - prefixWidth) return [];
+      // Only the action text is underlined; decoration stays outside the link.
       const link = `\x1b]8;;${url}\x1b\\${theme.fg('accent', label)}\x1b]8;;\x1b\\`;
-      return [header, link];
+      return [styledHeader, prefix + link];
     },
 
     handleMouse(event) {

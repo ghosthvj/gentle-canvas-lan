@@ -35,7 +35,7 @@ Pi TUI import. This module has no runtime dependencies, I/O or timers.
 Opening the card link requires a terminal that supports OSC 8 hyperlinks (and
 allows them through any terminal multiplexer). On a terminal without that
 support, use `/canvas:lan status` or the full URL in the tool output. Copying the
-visible `Open canvas` label is not copying its hidden URL; use the terminal's
+visible `Open Design Canvas` label is not copying its hidden URL; use the terminal's
 copy-link-address action if available. The parent owns sidebar availability, hidden/narrow rail
 handling and fallback placement. This renderer does not claim inheritance of all
 shell visual settings or implement the fallback widget itself.

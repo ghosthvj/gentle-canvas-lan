@@ -75,6 +75,23 @@ test('header press claims and click toggles; link and unrelated mouse events rem
   assert.deepEqual(targets(panel.render(40)[1]), [urls[0]]);
 });
 
+test('decorated card keeps dash and glyph outside the underlined link', () => {
+  const theme = { fg: (_role, text) => text, bold: text => text };
+  const panel = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true });
+  panel.setUrl(urls[0]);
+  for (const width of [48, 40]) {
+    const rows = panel.render(width);
+    const plain = rows.map(unstyle);
+    assert.equal(plain[1], truncateToWidth('- ▤ Open Design Canvas', width, ''));
+    const linkStart = rows[1].indexOf('\x1b]8;;');
+    const labelStart = plain[1].indexOf('Open Design Canvas');
+    assert.ok(linkStart >= 0 && labelStart >= 0);
+    assert.equal(visibleWidth(plain[1].slice(0, labelStart)), visibleWidth('- ▤ '));
+    assert.doesNotMatch(rows[1].slice(0, linkStart), /Open Design Canvas/);
+    assert.deepEqual(targets(rows[1]), [urls[0]]);
+  }
+});
+
 test('idle, replacement, clearing and invalidation preserve public state semantics', () => {
   const { panel } = fixture();
   const empty = panel.digest();
