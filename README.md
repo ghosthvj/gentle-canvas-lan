@@ -16,12 +16,13 @@ The listener stays fixed; reopening a restarted canvas updates the upstream and 
 
 Requires Linux with Gentle Shell/Gentle Design and Node.js 22+. This package has no runtime dependencies beyond Node and its host.
 
-Set the address assigned to your Linux server **before launching Gentle Shell**:
+Set the address once with the setup menu (persisted in `$XDG_CONFIG_HOME/gentle-canvas-lan/config.json`, default `~/.config/gentle-canvas-lan/config.json`):
 
-```sh
-export GENTLE_CANVAS_LAN_HOST=192.168.1.20
-export GENTLE_CANVAS_LAN_PORT=34316
+```text
+/canvas:lan setup
 ```
+
+It asks for the LAN host/IP, port (default `34316`) and an optional external HTTPS origin. Values survive Gentle Shell restarts. Environment variables still override saved values for one-off runs.
 
 Load the local entry with your Pi/Gentle Shell launcher's `-e` option, for example:
 
@@ -48,6 +49,7 @@ This is a **private host contract**, not an official sidebar API. No installed f
 | `/canvas:lan` or `/canvas:lan start` | Enable/start the fixed listener. Without a canvas registration, requests return 502 until you open a design. |
 | `/canvas:lan status` | Report listener state and current LAN URL when available. |
 | `/canvas:lan stop` | Stop the listener and disable automatic restart until explicit start. |
+| `/canvas:lan setup` | Prompt for host, port and optional external origin; save them and rebuild the proxy. |
 
 Stopping the design canvas clears its registered target. Session shutdown closes the proxy and pending startup. A port conflict is reported without killing its owner or silently choosing another port. Independent sessions need distinct configured ports.
 

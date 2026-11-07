@@ -38,6 +38,16 @@ paths (including a trailing `/`), query strings and fragments are rejected.
 Origins are canonicalized, including omission of default HTTP/HTTPS ports.
 The configuration helper does not read or trust forwarded request headers.
 
+## Persisted menu settings
+
+`/canvas:lan setup` writes `$XDG_CONFIG_HOME/gentle-canvas-lan/config.json`
+(default `~/.config/gentle-canvas-lan/config.json`) with `host`, `port` and an
+optional `publicOrigin`. The file is created with mode `0600` and replaced
+atomically after validating the complete trio. Environment variables override
+saved values individually, so an exported `GENTLE_CANVAS_LAN_PORT` wins over
+the menu while it is set. Saving disposes the running proxy; reopen the design
+or run `/canvas:lan start` to bind the new endpoint.
+
 ## Register a trusted canvas URL
 
 `readConfig(env = process.env)` returns a frozen `{host, port, publicOrigin}`.

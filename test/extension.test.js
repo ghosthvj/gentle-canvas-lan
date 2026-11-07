@@ -24,8 +24,10 @@ function fixture(options = {}) {
     async shutdown() { calls.push('shutdown'); running = false; },
   };
   const pi = { on: (event, fn) => handlers.set(event, fn), registerCommand: (name, spec) => commands.set(name, spec) };
+  const inputs = [...(options.inputResponses ?? [])];
   const ui = {
     notify(text, level) { notices.push([text, level]); return 'original-result'; },
+    input: async (_title, _placeholder) => inputs.shift(),
     setWidget(key, lines, options) {
       component?.dispose?.();
       component = undefined;
@@ -38,7 +40,7 @@ function fixture(options = {}) {
   };
   const original = ui.notify;
   const ctx = { hasUI: true, ui, ...(options.tuiMode ? { mode: 'tui' } : {}) };
-  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, makeController: () => { calls.push('construct'); return controller; }, loadUi: async () => ({ truncateToWidth: (value, width) => value.slice(0, width), visibleWidth: value => value.length }), ...options });
+  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, settingsPath: options.settingsPath ?? '/nonexistent/gentle-canvas-lan/config.json', makeController: (opts) => { calls.push('construct'); calls.push(opts?.config); return controller; }, loadUi: async () => ({ truncateToWidth: (value, width) => value.slice(0, width), visibleWidth: value => value.length }), ...options });
   return { pi, calls, notices, widgets, ctx, original, commands, component: () => component, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
 }
 
@@ -51,9 +53,9 @@ test('entry registers without opening resources; command help/status/start/stop'
   assert.deepEqual(f.calls, []);
   assert.match(f.notices.at(-1)[0], /not running/);
   await command.handler('invalid', f.ctx);
-  assert.equal(f.notices.at(-1)[0], 'Usage: /canvas:lan [start|status|stop]');
+  assert.equal(f.notices.at(-1)[0], 'Usage: /canvas:lan [start|status|stop|setup]');
   await command.handler('', f.ctx);
-  assert.deepEqual(f.calls, ['construct', 'start']);
+  assert.deepEqual(f.calls.slice(0, 1), ['construct']);
   assert.match(f.notices.at(-1)[0], /Canvas LAN: http/);
   await command.handler('stop', f.ctx);
   assert.equal(f.calls.at(-1), 'stop');
@@ -79,6 +81,59 @@ test('TUI mounts LAN-only sidebar and restores footer when stopped', async () =>
   assert.equal(host.parts.get('footer'), footer);
   assert.equal(f.widgets.size, 0);
   await f.emit('session_shutdown');
+});
+
+test('setup menu persists host and port and rebuilds the controller', async t => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-menu-'));
+  const settingsPath = join(dir, 'config.json');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const f = fixture({ env: {}, settingsPath, inputResponses: [' 192.168.1.50 ', '35000', ''] });
+  await f.commands.get('canvas:lan').handler('setup', f.ctx);
+  assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { host: '192.168.1.50', port: '35000' });
+  assert.match(f.notices.at(-1)[0], /settings saved/);
+  await f.commands.get('canvas:lan').handler('start', f.ctx);
+  const config = f.calls.find(call => call && typeof call === 'object' && 'host' in call);
+  assert.deepEqual(config, { host: '192.168.1.50', port: 35000, publicOrigin: 'http://192.168.1.50:35000' });
+  await f.emit('session_shutdown');
+});
+
+test('setup cancellation and invalid values leave saved settings untouched', async t => {
+  const { mkdtemp, readFile, rm, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-menu-'));
+  const settingsPath = join(dir, 'config.json');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(settingsPath, JSON.stringify({ host: '192.168.1.20', port: '34316' }));
+  for (const responses of [[undefined], ['0.0.0.0', '34316', '']]) {
+    const f = fixture({ settingsPath, inputResponses: responses });
+    await f.commands.get('canvas:lan').handler('setup', f.ctx);
+    assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { host: '192.168.1.20', port: '34316' });
+    assert.deepEqual(f.calls, []);
+    if (responses[0] === undefined) assert.match(f.notices.at(-1)[0], /cancelled/);
+    else assert.match(f.notices.at(-1)[0], /must be an explicit/);
+    await f.emit('session_shutdown');
+  }
+});
+
+test('environment variables override saved menu values', async t => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-menu-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const settingsPath = join(dir, 'config.json');
+  const f = fixture({ env: {}, settingsPath, inputResponses: ['192.168.1.20', '34316', ''] });
+  await f.commands.get('canvas:lan').handler('setup', f.ctx);
+  const overridden = fixture({ env: { GENTLE_CANVAS_LAN_PORT: '40000' }, settingsPath });
+  await overridden.commands.get('canvas:lan').handler('start', overridden.ctx);
+  const config = overridden.calls.find(call => call && typeof call === 'object' && 'host' in call);
+  assert.equal(config.port, 40000);
+  await f.emit('session_shutdown');
+  await overridden.emit('session_shutdown');
 });
 
 test('narrow fallback has a themed separator without altering sidebar or link target', async () => {
@@ -261,6 +316,8 @@ test('notice fallback preserves UI results and restores wrapper on shutdown', as
   await f.emit('session_start');
   await f.emit('input');
   assert.equal(f.ctx.ui.notify(`Design canvas refreshed: ${url}\nOpen manually.`, 'warning'), 'original-result');
+  // Let the asynchronous settings load finish before shutdown races it.
+  await new Promise(resolve => setTimeout(resolve, 20));
   // Shutdown waits for the asynchronous notice registration before disposing.
   await f.emit('session_shutdown');
   assert.equal(f.calls.filter(x => Array.isArray(x)).length, 1);

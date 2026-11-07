@@ -2,12 +2,13 @@ import { readConfig } from './config.js';
 import { createController } from './controller.js';
 import { attachSidebar } from './sidebar-adapter.js';
 import { createLanPanel } from './lan-panel.js';
+import { defaultSettingsPath, loadSettings, mergeSettings, saveSettings } from './settings.js';
 
-const usage = 'Usage: /canvas:lan [start|status|stop]';
+const usage = 'Usage: /canvas:lan [start|status|stop|setup]';
 const noticeUrl = /^Design canvas(?: refreshed)?: (http:\/\/(?:127\.0\.0\.1|localhost):\d+\/\S*)/m;
 
 /** Expose LAN access while preserving Gentle Design's own local result fields. */
-export function installCanvasLan(pi, { env = process.env, makeController = createController, loadUi = () => import('@earendil-works/pi-tui') } = {}) {
+export function installCanvasLan(pi, { env = process.env, makeController = createController, loadUi = () => import('@earendil-works/pi-tui'), settingsPath = defaultSettingsPath(env) } = {}) {
   let controller;
   let closed = false;
   const pending = new Set();
@@ -19,6 +20,8 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
   const mounting = new Map();
   let presentationGeneration = 0;
   let uiTools;
+  let saved = {};
+  let settingsLoaded = false;
   const clearLinks = () => {
     links = null;
     presentationGeneration++;
@@ -95,7 +98,16 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     try { await work; }
     finally { if (mounting.get(ui) === work) mounting.delete(ui); }
   };
-  const getController = () => controller ??= makeController({ config: readConfig(env) });
+  const ensureSettings = async () => {
+    if (settingsLoaded) return;
+    settingsLoaded = true;
+    try { saved = await loadSettings(settingsPath); } catch { saved = {}; }
+  };
+  const effectiveConfig = () => readConfig(mergeSettings(env, saved));
+  const getController = async () => {
+    await ensureSettings();
+    return controller ??= makeController({ config: effectiveConfig() });
+  };
   const notify = (ctx, text, level = 'info') => {
     if (!closed && ctx.hasUI) ctx.ui.notify(text, level);
   };
@@ -117,7 +129,9 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
   const open = (url, ctx) => track((async () => {
     if (closed) return;
     try {
-      const state = await getController().openCanvas(url);
+      const instance = await getController();
+      if (closed) return;
+      const state = await instance.openCanvas(url);
       if (!closed && state.running) links = { lanUrl: state.lanUrl, shortUrl: state.shortUrl };
       report(ctx, state, false);
       return state;
@@ -151,16 +165,38 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       if (closed) return;
       watch(ctx);
       const action = String(args ?? '').trim() || 'start';
-      if (!['start', 'status', 'stop'].includes(action)) return notify(ctx, usage, 'warning');
+      if (!['start', 'status', 'stop', 'setup'].includes(action)) return notify(ctx, usage, 'warning');
       try {
         if (action === 'status') return report(ctx, controller?.status() ?? { running: false });
+        if (action === 'setup') {
+          if (!ctx.hasUI || typeof ctx.ui.input !== 'function') return notify(ctx, '/canvas:lan setup needs an interactive UI.', 'warning');
+          await ensureSettings();
+          const host = await ctx.ui.input('LAN host/IP to bind', saved.host ?? env.GENTLE_CANVAS_LAN_HOST ?? '');
+          if (host === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
+          const port = await ctx.ui.input('LAN port', saved.port ?? env.GENTLE_CANVAS_LAN_PORT ?? '34316');
+          if (port === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
+          const publicOrigin = await ctx.ui.input('External HTTPS origin (optional; empty clears)', saved.publicOrigin ?? env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN ?? '');
+          if (publicOrigin === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
+          const next = await saveSettings(settingsPath, { host, port, publicOrigin });
+          saved = next;
+          if (controller) {
+            await controller.shutdown();
+            controller = undefined;
+            clearLinks();
+          }
+          const overrides = ['GENTLE_CANVAS_LAN_HOST', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN']
+            .filter(key => env[key] !== undefined);
+          notify(ctx, `Canvas LAN settings saved to ${settingsPath}. Open a design or run /canvas:lan start to use them.`
+            + (overrides.length ? ` Environment overrides active for: ${overrides.join(', ')}.` : ''));
+          return;
+        }
         if (action === 'stop') {
           clearLinks();
           if (controller) await controller.stop();
-          else await getController().stop();
+          else await (await getController()).stop();
           return notify(ctx, 'Canvas LAN proxy stopped. Automatic start is disabled until /canvas:lan start.');
         }
-        report(ctx, await getController().start());
+        report(ctx, await (await getController()).start());
       } catch (error) {
         notify(ctx, error instanceof TypeError ? error.message : 'Could not start the LAN canvas proxy. Check the configured address and port.', 'error');
       }
@@ -201,8 +237,8 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     wrappers.clear();
     observedCalls.clear();
     // Dispose immediately: a pending start must observe cancellation, not become live.
-    const stopping = controller?.shutdown();
     await Promise.allSettled([...pending]);
+    const stopping = controller?.shutdown();
     await stopping;
   });
 }
