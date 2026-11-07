@@ -112,23 +112,6 @@ test('visible URL text is never underlined and stays complete for Ctrl+click', (
   }
 });
 
-test('optional OSC 8 probe puts the plain URL first and the action label second', () => {
-  const theme = { fg: (_role, text) => text, bold: text => text, underline: text => text };
-  const probe = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true, osc8Probe: true });
-  const plainOnly = createLanPanel({ theme, truncateToWidth, visibleWidth, decorated: true });
-  const short = 'http://10.10.5.34:34316/s/96ca25cf56b6c895';
-  probe.setUrl(short);
-  plainOnly.setUrl(short);
-  const rendered = probe.render(48);
-  const rows = rendered.map(unstyle);
-  const plainRows = plainOnly.render(48).map(unstyle);
-  assert.equal(rows.filter(row => row === short).length, 1);
-  assert.equal(plainRows.filter(row => row === short).length, 1);
-  assert.equal(rows.at(-1), '- ▤ Open Design Canvas');
-  assert.deepEqual(targets(rendered.at(-1)), [short]);
-  assert.ok(rendered.findIndex(row => unstyle(row) === short) < rendered.length - 1, 'plain URL precedes the OSC 8 label');
-});
-
 test('idle, replacement, clearing and invalidation preserve public state semantics', () => {
   const { panel } = fixture();
   const empty = panel.digest();
