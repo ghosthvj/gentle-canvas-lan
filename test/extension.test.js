@@ -83,6 +83,31 @@ test('TUI mounts LAN-only sidebar and restores footer when stopped', async () =>
   await f.emit('session_shutdown');
 });
 
+test('status reports effective host and port with their source', async t => {
+  const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-status-'));
+  const settingsPath = join(dir, 'config.json');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(settingsPath, JSON.stringify({ host: '192.168.1.30', port: '35000', publicOrigin: 'https://canvas.example' }));
+  const saved = fixture({ env: {}, settingsPath });
+  await saved.commands.get('canvas-lan:status').handler('', saved.ctx);
+  assert.match(saved.notices.at(-1)[0], /Canvas LAN host: 192\.168\.1\.30 \(saved\)/);
+  assert.match(saved.notices.at(-1)[0], /Canvas LAN port: 35000 \(saved\)/);
+  assert.match(saved.notices.at(-1)[0], /Canvas LAN origin: https:\/\/canvas\.example \(saved\)/);
+  await saved.emit('session_shutdown');
+  const overridden = fixture({ env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, settingsPath });
+  await overridden.commands.get('canvas-lan:status').handler('', overridden.ctx);
+  assert.match(overridden.notices.at(-1)[0], /Canvas LAN host: 192\.168\.1\.20 \(env\)/);
+  assert.match(overridden.notices.at(-1)[0], /Canvas LAN port: 35000 \(saved\)/);
+  await overridden.emit('session_shutdown');
+  const unset = fixture({ env: {}, settingsPath: '/nonexistent/canvas-status/config.json' });
+  await unset.commands.get('canvas-lan:status').handler('', unset.ctx);
+  assert.match(unset.notices.at(-1)[0], /not configured/);
+  await unset.emit('session_shutdown');
+});
+
 test('setup menu persists host and port and rebuilds the controller', async t => {
   const { mkdtemp, readFile, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');

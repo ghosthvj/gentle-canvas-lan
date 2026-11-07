@@ -47,7 +47,7 @@ This is a **private host contract**, not an official sidebar API. No installed f
 | Command | Behavior |
 | --- | --- |
 | `/canvas-lan:start` | Enable/start the fixed listener. Without a canvas registration, requests return 502 until you open a design. |
-| `/canvas-lan:status` | Report listener state and current LAN URL when available. |
+| `/canvas-lan:status` | Report effective host/port (env or saved), listener state and current LAN URL when available. |
 | `/canvas-lan:stop` | Stop the listener and disable automatic restart until explicit start. |
 | `/canvas-lan:setup` | Prompt for host, port and optional external origin; save them and rebuild the proxy. |
 

@@ -117,7 +117,9 @@ test('card shows only the short capability while status and tool output keep the
     assert.equal(rows.map(stripOsc).filter(row => /\/s\/[0-9a-f]{16}/.test(row)).length, 1,
       'plain URL row fits one line');
     await handlers.get('command:canvas-lan:status')('', ctx);
-    assert.equal(notices.at(-1)[0], `Canvas LAN: http://127.0.0.1:34317/${token}/d/demo/`);
+    assert.match(notices.at(-1)[0], new RegExp(`Canvas LAN: http://127\\.0\\.0\\.1:34317/${token}/d/demo/`));
+    assert.match(notices.at(-1)[0], /Canvas LAN host: 127\.0\.0\.1 \(env\)/);
+    assert.match(notices.at(-1)[0], /Canvas LAN port: 34317 \(env\)/);
   } finally {
     await handlers.get('session_shutdown')({}, ctx);
     await new Promise(resolve => upstream.close(resolve));

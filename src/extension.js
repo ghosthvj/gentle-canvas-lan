@@ -173,7 +173,27 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     report(ctx, await (await getController()).start());
   });
   command('canvas-lan:status', 'Show LAN design-canvas proxy status', async ctx => {
-    report(ctx, controller?.status() ?? { running: false });
+    await ensureSettings();
+    const lines = [];
+    let config;
+    try {
+      config = effectiveConfig();
+    } catch {
+      lines.push('Canvas LAN is not configured. Run /canvas-lan:setup or set GENTLE_CANVAS_LAN_HOST.');
+    }
+    if (config) {
+      const source = (key, savedKey) => env[key] !== undefined ? 'env' : saved[savedKey] !== undefined ? 'saved' : 'unset';
+      lines.push(`Canvas LAN host: ${config.host} (${source('GENTLE_CANVAS_LAN_HOST', 'host')})`);
+      lines.push(`Canvas LAN port: ${config.port} (${source('GENTLE_CANVAS_LAN_PORT', 'port')})`);
+      if (config.publicOrigin) {
+        lines.push(`Canvas LAN origin: ${config.publicOrigin} (${source('GENTLE_CANVAS_LAN_PUBLIC_ORIGIN', 'publicOrigin')})`);
+      }
+    }
+    const state = controller?.status() ?? { running: false };
+    lines.push(state.running
+      ? state.lanUrl ? `Canvas LAN: ${state.lanUrl}` : 'Canvas LAN proxy running. Open a design to get its URL.'
+      : 'Canvas LAN proxy is not running. Use /canvas-lan:start to enable it.');
+    notify(ctx, lines.join('\n'));
   });
   command('canvas-lan:stop', 'Stop the LAN design-canvas proxy', async ctx => {
     clearLinks();
