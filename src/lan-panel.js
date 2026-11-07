@@ -1,7 +1,7 @@
 const invalidUrl = 'Expected a control-free HTTP(S) LAN URL or null.';
 
 /** A rail-owned, LAN-only component; terminal helpers come from the active host. */
-export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated = false }) {
+export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated = false, actionLabel = true }) {
   let url = null;
   let collapsed = false;
 
@@ -55,7 +55,7 @@ export function createLanPanel({ theme, truncateToWidth, visibleWidth, decorated
         offset += chunk.length;
       }
       const labelRow = label && visibleWidth(label) <= columns - prefixWidth ? prefix + link : undefined;
-      if (labelRow) rows.push(labelRow);
+      if (labelRow && actionLabel) rows.push(labelRow);
       return [...rows, ...urlRows];
     },
 

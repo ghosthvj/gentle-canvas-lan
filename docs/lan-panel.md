@@ -20,7 +20,8 @@ Pi TUI import. This module has no runtime dependencies, I/O or timers.
   short stable LAN redirect instead, so the card link fits one terminal line. The label also carries an OSC 8
   destination for terminals that expose it, but plain URL text is the reliable
   Ctrl+click path in hosts such as Herdr. The plain URL rows follow the action label; labels are never explicitly
-  underlined. The header is plain
+  underlined. `actionLabel: false` omits the action label entirely, which the
+  narrow fallback uses to show only its URL. The header is plain
   `▾ CANVAS LAN`/`▸ CANVAS LAN` so the native card applies its own glyph and
   title color; the document glyph lives in the body label. It never adds another address, frame, blank
   padding, shortcuts or clipboard affordances. The shell owns the surrounding rail.

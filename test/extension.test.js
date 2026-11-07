@@ -99,9 +99,9 @@ test('narrow fallback has a themed separator without altering sidebar or link ta
     else assert.equal(rows[0], '─');
     assert.ok(rows.length >= 2);
     assert.equal(rows[0].length, width);
-    const target = rows[1].match(/\x1b\]8;;([^\x1b\x07]+)(?:\x1b\\|\x07)/)?.[1];
-    if (target) assert.equal(target, 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/');
-    assert.ok(rows.some(row => row.includes('http://192.168.1.20:34316/')));
+    const plain = rows.join('').replace(/\x1b\[[0-9;]*m/g, '');
+    assert.equal(plain.includes('Open Design Canvas'), false);
+    assert.ok(plain.includes('http://192.168.1.20:34316/'));
   }
   eligible = true;
   host.active = true;
