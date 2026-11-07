@@ -4,7 +4,6 @@ import { attachSidebar } from './sidebar-adapter.js';
 import { createLanPanel } from './lan-panel.js';
 import { defaultSettingsPath, loadSettings, mergeSettings, saveSettings } from './settings.js';
 
-const usage = 'Usage: /canvas:lan [start|status|stop|setup]';
 const noticeUrl = /^Design canvas(?: refreshed)?: (http:\/\/(?:127\.0\.0\.1|localhost):\d+\/\S*)/m;
 
 /** Expose LAN access while preserving Gentle Design's own local result fields. */
@@ -119,7 +118,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     if (!announce) return;
     notify(ctx, state.running
       ? state.lanUrl ? `Canvas LAN: ${state.lanUrl}` : 'Canvas LAN proxy running. Open a design to get its URL.'
-      : 'Canvas LAN proxy is not running. Use /canvas:lan start to enable it.');
+      : 'Canvas LAN proxy is not running. Use /canvas-lan:start to enable it.');
   };
   const track = work => {
     pending.add(work);
@@ -159,48 +158,48 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
 
   pi.on('session_start', (_event, ctx) => watch(ctx));
   pi.on('input', (_event, ctx) => watch(ctx));
-  pi.registerCommand('canvas:lan', {
-    description: 'Access the design canvas on your LAN: /canvas:lan [start|status|stop]',
-    handler: async (args, ctx) => {
+  const command = (name, description, handler) => pi.registerCommand(name, {
+    description,
+    handler: async (_args, ctx) => {
       if (closed) return;
       watch(ctx);
-      const action = String(args ?? '').trim() || 'start';
-      if (!['start', 'status', 'stop', 'setup'].includes(action)) return notify(ctx, usage, 'warning');
-      try {
-        if (action === 'status') return report(ctx, controller?.status() ?? { running: false });
-        if (action === 'setup') {
-          if (!ctx.hasUI || typeof ctx.ui.input !== 'function') return notify(ctx, '/canvas:lan setup needs an interactive UI.', 'warning');
-          await ensureSettings();
-          const host = await ctx.ui.input('LAN host/IP to bind', saved.host ?? env.GENTLE_CANVAS_LAN_HOST ?? '');
-          if (host === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
-          const port = await ctx.ui.input('LAN port', saved.port ?? env.GENTLE_CANVAS_LAN_PORT ?? '34316');
-          if (port === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
-          const publicOrigin = await ctx.ui.input('External HTTPS origin (optional; empty clears)', saved.publicOrigin ?? env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN ?? '');
-          if (publicOrigin === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
-          const next = await saveSettings(settingsPath, { host, port, publicOrigin });
-          saved = next;
-          if (controller) {
-            await controller.shutdown();
-            controller = undefined;
-            clearLinks();
-          }
-          const overrides = ['GENTLE_CANVAS_LAN_HOST', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN']
-            .filter(key => env[key] !== undefined);
-          notify(ctx, `Canvas LAN settings saved to ${settingsPath}. Open a design or run /canvas:lan start to use them.`
-            + (overrides.length ? ` Environment overrides active for: ${overrides.join(', ')}.` : ''));
-          return;
-        }
-        if (action === 'stop') {
-          clearLinks();
-          if (controller) await controller.stop();
-          else await (await getController()).stop();
-          return notify(ctx, 'Canvas LAN proxy stopped. Automatic start is disabled until /canvas:lan start.');
-        }
-        report(ctx, await (await getController()).start());
-      } catch (error) {
+      try { await handler(ctx); }
+      catch (error) {
         notify(ctx, error instanceof TypeError ? error.message : 'Could not start the LAN canvas proxy. Check the configured address and port.', 'error');
       }
     },
+  });
+  command('canvas-lan:start', 'Start the LAN design-canvas proxy', async ctx => {
+    report(ctx, await (await getController()).start());
+  });
+  command('canvas-lan:status', 'Show LAN design-canvas proxy status', async ctx => {
+    report(ctx, controller?.status() ?? { running: false });
+  });
+  command('canvas-lan:stop', 'Stop the LAN design-canvas proxy', async ctx => {
+    clearLinks();
+    if (controller) await controller.stop();
+    else await (await getController()).stop();
+    notify(ctx, 'Canvas LAN proxy stopped. Automatic start is disabled until /canvas-lan:start.');
+  });
+  command('canvas-lan:setup', 'Configure the LAN design-canvas host and port', async ctx => {
+    if (!ctx.hasUI || typeof ctx.ui.input !== 'function') return notify(ctx, '/canvas-lan:setup needs an interactive UI.', 'warning');
+    await ensureSettings();
+    const host = await ctx.ui.input('LAN host/IP to bind', saved.host ?? env.GENTLE_CANVAS_LAN_HOST ?? '');
+    if (host === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
+    const port = await ctx.ui.input('LAN port', saved.port ?? env.GENTLE_CANVAS_LAN_PORT ?? '34316');
+    if (port === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
+    const publicOrigin = await ctx.ui.input('External HTTPS origin (optional; empty clears)', saved.publicOrigin ?? env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN ?? '');
+    if (publicOrigin === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
+    saved = await saveSettings(settingsPath, { host, port, publicOrigin });
+    if (controller) {
+      await controller.shutdown();
+      controller = undefined;
+      clearLinks();
+    }
+    const overrides = ['GENTLE_CANVAS_LAN_HOST', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN']
+      .filter(key => env[key] !== undefined);
+    notify(ctx, `Canvas LAN settings saved to ${settingsPath}. Open a design or run /canvas-lan:start to use them.`
+      + (overrides.length ? ` Environment overrides active for: ${overrides.join(', ')}.` : ''));
   });
   pi.on('tool_result', async (event, ctx) => {
     if (closed || event.toolName !== 'gentle_design' || event.isError) return;

@@ -40,7 +40,7 @@ Pi TUI import. This module has no runtime dependencies, I/O or timers.
 Ctrl+click the visible URL. Herdr 0.9.5 exposes plain (including wrapped) URL
 text to its Ctrl+click handler but did not expose this card's OSC 8 label in
 practice, so the panel always renders the URL as selectable text; capability
-detection alone was not a reliable proxy for clickability. `/canvas:lan status`
+detection alone was not a reliable proxy for clickability. `/canvas-lan:status`
 and the tool output also carry the plain URL. The parent owns sidebar availability, hidden/narrow rail
 handling and fallback placement. This renderer does not claim inheritance of all
 shell visual settings or implement the fallback widget itself.

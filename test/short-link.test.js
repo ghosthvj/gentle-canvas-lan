@@ -116,7 +116,7 @@ test('card shows only the short capability while status and tool output keep the
     const stripOsc = row => row.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, '');
     assert.equal(rows.map(stripOsc).filter(row => /\/s\/[0-9a-f]{16}/.test(row)).length, 1,
       'plain URL row fits one line');
-    await handlers.get('command:canvas:lan')('status', ctx);
+    await handlers.get('command:canvas-lan:status')('', ctx);
     assert.equal(notices.at(-1)[0], `Canvas LAN: http://127.0.0.1:34317/${token}/d/demo/`);
   } finally {
     await handlers.get('session_shutdown')({}, ctx);

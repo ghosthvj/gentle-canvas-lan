@@ -19,7 +19,7 @@ Requires Linux with Gentle Shell/Gentle Design and Node.js 22+. This package has
 Set the address once with the setup menu (persisted in `$XDG_CONFIG_HOME/gentle-canvas-lan/config.json`, default `~/.config/gentle-canvas-lan/config.json`):
 
 ```text
-/canvas:lan setup
+/canvas-lan:setup
 ```
 
 It asks for the LAN host/IP, port (default `34316`) and an optional external HTTPS origin. Values survive Gentle Shell restarts. Environment variables still override saved values for one-off runs.
@@ -38,7 +38,7 @@ Successful `gentle_design` open/list results also include a text block with **Ca
 
 In compatible fullscreen Gentle Shell sessions, a **CANVAS LAN** card joins the sidebar through a guarded compatibility adapter. It uses semantic theme colors and contains only the LAN URL. The card header matches the native sections: plain `▾ CANVAS LAN` / `▸ CANVAS LAN` with the shell's own title styling, and the body row `- ▤ Open Design Canvas` carrying the document icon. A left click toggles the fold; state is session-only. The narrow fallback keeps its static `─ ▤ CANVAS LAN ───` heading and shows only the short URL text, because below-editor widgets are not a reliable mouse target here.
 
-For terminal testing, the card body shows the short stable LAN link as plain text first, then the `- ▤ Open Design Canvas` action label wrapped in OSC 8 (`http://LAN_IP:34316/s/<16-hex-capability>`) that redirects to the current tokenized canvas whose destination is the short LAN link; no wrapped/truncated URL fragment is used as the click target. Use your terminal's link-opening modifier (often Ctrl+click) on that short link; it fits one line, survives canvas restarts, and redirects to the current canvas. `/canvas:lan status` and the tool output still print the complete tokenized URL. The short path is a capability for your trusted LAN, like the canvas token itself: keep it private, and never expose this port publicly. The previous Status footer and its mouse handling are preserved, and the adapter restores it only while it still owns the slot.
+The card body shows `- ▤ Open Design Canvas` and a short stable LAN link (`http://LAN_IP:34316/s/<16-hex-capability>`) that redirects to the current tokenized canvas; no wrapped/truncated URL fragment is used as the click target. Use your terminal's link-opening modifier (often Ctrl+click) on that short link; it fits one line, survives canvas restarts, and redirects to the current canvas. `/canvas-lan:status` and the tool output still print the complete tokenized URL. The short path is a capability for your trusted LAN, like the canvas token itself: keep it private, and never expose this port publicly. The previous Status footer and its mouse handling are preserved, and the adapter restores it only while it still owns the slot.
 
 This is a **private host contract**, not an official sidebar API. No installed files are modified or imported by absolute path. Host TUI helpers are imported at the extension entry and passed into the core installer, so native JavaScript dependencies do not bypass Pi's module aliases through a deferred import. If the host is incompatible, regular-mode, narrow/inactive, or a newer component replaces the adapter, the same LAN-only view falls back below the editor, with its title embedded in a thin `─ ▤ CANVAS LAN ───` rule above the link, using the active theme's border and text colors. Existing shell components may control visibility of their footer slot; not every shell preference is inherited by the add-on. A UI widget factory supplies TUI/theme and owns disposal; non-UI modes cannot display it. There is no extra stored conversation message. Stopping the proxy/canvas or shutting down the session removes the view; reopening a restarted canvas updates the link.
 
@@ -46,10 +46,10 @@ This is a **private host contract**, not an official sidebar API. No installed f
 
 | Command | Behavior |
 | --- | --- |
-| `/canvas:lan` or `/canvas:lan start` | Enable/start the fixed listener. Without a canvas registration, requests return 502 until you open a design. |
-| `/canvas:lan status` | Report listener state and current LAN URL when available. |
-| `/canvas:lan stop` | Stop the listener and disable automatic restart until explicit start. |
-| `/canvas:lan setup` | Prompt for host, port and optional external origin; save them and rebuild the proxy. |
+| `/canvas-lan:start` | Enable/start the fixed listener. Without a canvas registration, requests return 502 until you open a design. |
+| `/canvas-lan:status` | Report listener state and current LAN URL when available. |
+| `/canvas-lan:stop` | Stop the listener and disable automatic restart until explicit start. |
+| `/canvas-lan:setup` | Prompt for host, port and optional external origin; save them and rebuild the proxy. |
 
 Stopping the design canvas clears its registered target. Session shutdown closes the proxy and pending startup. A port conflict is reported without killing its owner or silently choosing another port. Independent sessions need distinct configured ports.
 

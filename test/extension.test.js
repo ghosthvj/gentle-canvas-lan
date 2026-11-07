@@ -48,16 +48,16 @@ test('entry registers without opening resources; command help/status/start/stop'
   const f = fixture();
   assert.deepEqual(f.calls, []);
   await f.emit('session_start');
-  const command = f.commands.get('canvas:lan');
-  await command.handler('status', f.ctx);
+  assert.deepEqual([...f.commands.keys()].sort(), [
+    'canvas-lan:setup', 'canvas-lan:start', 'canvas-lan:status', 'canvas-lan:stop',
+  ]);
+  await f.commands.get('canvas-lan:status').handler('', f.ctx);
   assert.deepEqual(f.calls, []);
   assert.match(f.notices.at(-1)[0], /not running/);
-  await command.handler('invalid', f.ctx);
-  assert.equal(f.notices.at(-1)[0], 'Usage: /canvas:lan [start|status|stop|setup]');
-  await command.handler('', f.ctx);
+  await f.commands.get('canvas-lan:start').handler('', f.ctx);
   assert.deepEqual(f.calls.slice(0, 1), ['construct']);
   assert.match(f.notices.at(-1)[0], /Canvas LAN: http/);
-  await command.handler('stop', f.ctx);
+  await f.commands.get('canvas-lan:stop').handler('', f.ctx);
   assert.equal(f.calls.at(-1), 'stop');
   await f.emit('session_shutdown');
 });
@@ -77,7 +77,7 @@ test('TUI mounts LAN-only sidebar and restores footer when stopped', async () =>
   assert.deepEqual(f.component().render(48), []);
   host.active = false;
   assert.match(f.component().render(48).join('\n'), /CANVAS LAN/);
-  await f.commands.get('canvas:lan').handler('stop', f.ctx);
+  await f.commands.get('canvas-lan:stop').handler('', f.ctx);
   assert.equal(host.parts.get('footer'), footer);
   assert.equal(f.widgets.size, 0);
   await f.emit('session_shutdown');
@@ -91,10 +91,10 @@ test('setup menu persists host and port and rebuilds the controller', async t =>
   const settingsPath = join(dir, 'config.json');
   t.after(() => rm(dir, { recursive: true, force: true }));
   const f = fixture({ env: {}, settingsPath, inputResponses: [' 192.168.1.50 ', '35000', ''] });
-  await f.commands.get('canvas:lan').handler('setup', f.ctx);
+  await f.commands.get('canvas-lan:setup').handler('', f.ctx);
   assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { host: '192.168.1.50', port: '35000' });
   assert.match(f.notices.at(-1)[0], /settings saved/);
-  await f.commands.get('canvas:lan').handler('start', f.ctx);
+  await f.commands.get('canvas-lan:start').handler('', f.ctx);
   const config = f.calls.find(call => call && typeof call === 'object' && 'host' in call);
   assert.deepEqual(config, { host: '192.168.1.50', port: 35000, publicOrigin: 'http://192.168.1.50:35000' });
   await f.emit('session_shutdown');
@@ -110,7 +110,7 @@ test('setup cancellation and invalid values leave saved settings untouched', asy
   await writeFile(settingsPath, JSON.stringify({ host: '192.168.1.20', port: '34316' }));
   for (const responses of [[undefined], ['0.0.0.0', '34316', '']]) {
     const f = fixture({ settingsPath, inputResponses: responses });
-    await f.commands.get('canvas:lan').handler('setup', f.ctx);
+    await f.commands.get('canvas-lan:setup').handler('', f.ctx);
     assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { host: '192.168.1.20', port: '34316' });
     assert.deepEqual(f.calls, []);
     if (responses[0] === undefined) assert.match(f.notices.at(-1)[0], /cancelled/);
@@ -127,9 +127,9 @@ test('environment variables override saved menu values', async t => {
   t.after(() => rm(dir, { recursive: true, force: true }));
   const settingsPath = join(dir, 'config.json');
   const f = fixture({ env: {}, settingsPath, inputResponses: ['192.168.1.20', '34316', ''] });
-  await f.commands.get('canvas:lan').handler('setup', f.ctx);
+  await f.commands.get('canvas-lan:setup').handler('', f.ctx);
   const overridden = fixture({ env: { GENTLE_CANVAS_LAN_PORT: '40000' }, settingsPath });
-  await overridden.commands.get('canvas:lan').handler('start', overridden.ctx);
+  await overridden.commands.get('canvas-lan:start').handler('', overridden.ctx);
   const config = overridden.calls.find(call => call && typeof call === 'object' && 'host' in call);
   assert.equal(config.port, 40000);
   await f.emit('session_shutdown');
@@ -205,7 +205,7 @@ test('automatic canvas opens keep links visible without redundant success notifi
   await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
   assert.deepEqual(f.notices, []);
   assert.equal(f.widgets.size, 1);
-  await f.commands.get('canvas:lan').handler('status', f.ctx);
+  await f.commands.get('canvas-lan:status').handler('', f.ctx);
   assert.match(f.notices.at(-1)[0], /Canvas LAN: http/);
   await f.emit('session_shutdown');
 });
@@ -250,7 +250,7 @@ test('stop and canvas revocation clear links; settled does not restore stale wid
     await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
     await f.emit('agent_settled');
     assert.equal(f.widgets.size, 1);
-    if (revoke === 'proxy-stop') await f.commands.get('canvas:lan').handler('stop', f.ctx);
+    if (revoke === 'proxy-stop') await f.commands.get('canvas-lan:stop').handler('', f.ctx);
     if (revoke === 'tool-stop') await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { stopped: true } } });
     if (revoke === 'list-stopped') await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { canvas: { running: false } } } });
     if (revoke === 'notice-stop') f.ctx.ui.notify('Design canvas stopped.', 'info');
@@ -333,7 +333,7 @@ test('stop notices clear registration without creating a controller', async () =
   await f.emit('session_start');
   f.ctx.ui.notify('Design canvas stopped.', 'info');
   assert.deepEqual(f.calls, []);
-  await f.commands.get('canvas:lan').handler('start', f.ctx);
+  await f.commands.get('canvas-lan:start').handler('', f.ctx);
   f.ctx.ui.notify('No design canvas is running.', 'info');
   assert.equal(f.calls.at(-1), 'clear');
   await f.emit('session_shutdown');
@@ -341,7 +341,7 @@ test('stop notices clear registration without creating a controller', async () =
 
 test('invalid configuration reports an actionable error and exposes nothing', async () => {
   const f = fixture({ env: {} });
-  await f.commands.get('canvas:lan').handler('start', f.ctx);
+  await f.commands.get('canvas-lan:start').handler('', f.ctx);
   assert.deepEqual(f.calls, []);
   assert.match(f.notices.at(-1)[0], /GENTLE_CANVAS_LAN_HOST/);
   assert.equal(f.notices.at(-1)[1], 'error');
