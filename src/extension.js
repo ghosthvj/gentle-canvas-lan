@@ -2,9 +2,24 @@ import { readConfig } from './config.js';
 import { createController } from './controller.js';
 import { attachSidebar } from './sidebar-adapter.js';
 import { createLanPanel } from './lan-panel.js';
-import { defaultSettingsPath, loadSettings, mergeSettings, saveSettings } from './settings.js';
+import { defaultSettingsPath, loadSettings, mergeSettings, saveSettings, validateSettings } from './settings.js';
+import { createSetupPanel } from './setup-panel.js';
 
 const noticeUrl = /^Design canvas(?: refreshed)?: (http:\/\/(?:127\.0\.0\.1|localhost):\d+\/\S*)/m;
+// Centered modal for the setup form, matching the Gentle Shell usage overlay.
+const SETUP_OVERLAY = { overlay: true, overlayOptions: { anchor: 'center', width: 64, minWidth: 44 } };
+
+/** Sequential prompts, kept for hosts without overlay support. */
+const promptFields = async (ctx, current) => {
+  if (typeof ctx.ui.input !== 'function') return undefined;
+  const host = await ctx.ui.input('LAN host/IP to bind', current.host);
+  if (host === undefined) return undefined;
+  const port = await ctx.ui.input('LAN port', current.port);
+  if (port === undefined) return undefined;
+  const publicOrigin = await ctx.ui.input('External HTTPS origin (optional; empty clears)', current.publicOrigin);
+  if (publicOrigin === undefined) return undefined;
+  return { host, port, publicOrigin };
+};
 
 /** Expose LAN access while preserving Gentle Design's own local result fields. */
 export function installCanvasLan(pi, { env = process.env, makeController = createController, loadUi = () => import('@earendil-works/pi-tui'), settingsPath = defaultSettingsPath(env) } = {}) {
@@ -169,6 +184,26 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       }
     },
   });
+  // Persist the collected values once, then rebuild the proxy so the new endpoint binds.
+  const saveSetup = async (ctx, values) => {
+    if (!values) return notify(ctx, 'LAN setup cancelled; nothing changed.');
+    let next;
+    try {
+      next = await saveSettings(settingsPath, values);
+    } catch (error) {
+      return notify(ctx, error instanceof TypeError ? error.message : 'Could not save the Canvas LAN settings. Check the configured address and port.', 'error');
+    }
+    saved = next;
+    if (controller) {
+      await controller.shutdown();
+      controller = undefined;
+      clearLinks();
+    }
+    const overrides = ['GENTLE_CANVAS_LAN_HOST', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN']
+      .filter(key => env[key] !== undefined);
+    notify(ctx, `Canvas LAN settings saved to ${settingsPath}. Open a design or run /canvas-lan:start to use them.`
+      + (overrides.length ? ` Environment overrides active for: ${overrides.join(', ')}.` : ''));
+  };
   command('canvas-lan:start', 'Start the LAN design-canvas proxy', async ctx => {
     report(ctx, await (await getController()).start());
   });
@@ -202,24 +237,33 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     notify(ctx, 'Canvas LAN proxy stopped. Automatic start is disabled until /canvas-lan:start.');
   });
   command('canvas-lan:setup', 'Configure the LAN design-canvas host and port', async ctx => {
-    if (!ctx.hasUI || typeof ctx.ui.input !== 'function') return notify(ctx, '/canvas-lan:setup needs an interactive UI.', 'warning');
     await ensureSettings();
-    const host = await ctx.ui.input('LAN host/IP to bind', saved.host ?? env.GENTLE_CANVAS_LAN_HOST ?? '');
-    if (host === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
-    const port = await ctx.ui.input('LAN port', saved.port ?? env.GENTLE_CANVAS_LAN_PORT ?? '34316');
-    if (port === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
-    const publicOrigin = await ctx.ui.input('External HTTPS origin (optional; empty clears)', saved.publicOrigin ?? env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN ?? '');
-    if (publicOrigin === undefined) return notify(ctx, 'LAN setup cancelled; nothing changed.');
-    saved = await saveSettings(settingsPath, { host, port, publicOrigin });
-    if (controller) {
-      await controller.shutdown();
-      controller = undefined;
-      clearLinks();
+    const current = {
+      host: saved.host ?? env.GENTLE_CANVAS_LAN_HOST ?? '',
+      port: saved.port ?? env.GENTLE_CANVAS_LAN_PORT ?? '34316',
+      publicOrigin: saved.publicOrigin ?? env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN ?? '',
+    };
+    if (ctx.mode !== 'tui' || typeof ctx.ui.custom !== 'function') {
+      if (!ctx.hasUI || typeof ctx.ui.input !== 'function') return notify(ctx, '/canvas-lan:setup needs an interactive UI.', 'warning');
+      return saveSetup(ctx, await promptFields(ctx, current));
     }
-    const overrides = ['GENTLE_CANVAS_LAN_HOST', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN']
-      .filter(key => env[key] !== undefined);
-    notify(ctx, `Canvas LAN settings saved to ${settingsPath}. Open a design or run /canvas-lan:start to use them.`
-      + (overrides.length ? ` Environment overrides active for: ${overrides.join(', ')}.` : ''));
+    // The modal validates inline, so a rejected value never closes the form.
+    const values = await ctx.ui.custom((tui, theme, _keybindings, done) => createSetupPanel({
+      theme,
+      values: current,
+      validate: candidate => {
+        try {
+          validateSettings(candidate);
+          return null;
+        } catch (error) {
+          return error instanceof TypeError ? error.message : 'Invalid settings.';
+        }
+      },
+      submit: next => done(next),
+      cancel: () => done(undefined),
+      requestRender: () => tui.requestRender(),
+    }), SETUP_OVERLAY);
+    await saveSetup(ctx, values);
   });
   pi.on('tool_result', async (event, ctx) => {
     if (closed || event.toolName !== 'gentle_design' || event.isError) return;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { installCanvasLan } from '../src/extension.js';
 
 const url = 'http://127.0.0.1:41234/abcdefghijklmnop/d/demo/';
+
 function fixture(options = {}) {
   const handlers = new Map();
   let component;
@@ -25,9 +26,24 @@ function fixture(options = {}) {
   };
   const pi = { on: (event, fn) => handlers.set(event, fn), registerCommand: (name, spec) => commands.set(name, spec) };
   const inputs = [...(options.inputResponses ?? [])];
+  const overlays = [];
+  const overlayRenders = [];
   const ui = {
     notify(text, level) { notices.push([text, level]); return 'original-result'; },
     input: async (_title, _placeholder) => inputs.shift(),
+    ...(options.overlay ? {
+      async custom(factory, overlayOptions) {
+        overlays.push(overlayOptions);
+        let finish;
+        const result = new Promise(done => { finish = done; });
+        const component = factory({ requestRender() {} }, theme, {}, value => finish(value));
+        for (const key of options.overlay.keys) {
+          component.handleInput(key);
+          overlayRenders.push(component.render(60).join('\n'));
+        }
+        return result;
+      },
+    } : {}),
     setWidget(key, lines, options) {
       component?.dispose?.();
       component = undefined;
@@ -41,7 +57,7 @@ function fixture(options = {}) {
   const original = ui.notify;
   const ctx = { hasUI: true, ui, ...(options.tuiMode ? { mode: 'tui' } : {}) };
   installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, settingsPath: options.settingsPath ?? '/nonexistent/gentle-canvas-lan/config.json', makeController: (opts) => { calls.push('construct'); calls.push(opts?.config); return controller; }, loadUi: async () => ({ truncateToWidth: (value, width) => value.slice(0, width), visibleWidth: value => value.length }), ...options });
-  return { pi, calls, notices, widgets, ctx, original, commands, component: () => component, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
+  return { pi, calls, notices, widgets, ctx, original, commands, overlays, overlayRenders, component: () => component, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
 }
 
 test('entry registers without opening resources; command help/status/start/stop', async () => {
@@ -125,7 +141,7 @@ test('setup menu persists host and port and rebuilds the controller', async t =>
   await f.emit('session_shutdown');
 });
 
-test('setup cancellation and invalid values leave saved settings untouched', async t => {
+test('sequential fallback: setup cancellation and invalid values leave saved settings untouched', async t => {
   const { mkdtemp, readFile, rm, writeFile } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
@@ -142,6 +158,39 @@ test('setup cancellation and invalid values leave saved settings untouched', asy
     else assert.match(f.notices.at(-1)[0], /must be an explicit/);
     await f.emit('session_shutdown');
   }
+});
+
+test('setup opens a centered overlay and saves the edited values', async t => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-overlay-'));
+  const settingsPath = join(dir, 'config.json');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const keys = [...'192.168.1.50', '\t', ...'\x7f'.repeat(5), ...'35000', '\r'];
+  const f = fixture({ tuiMode: true, env: {}, settingsPath, overlay: { keys } });
+  await f.commands.get('canvas-lan:setup').handler('', f.ctx);
+  assert.deepEqual(f.overlays, [{ overlay: true, overlayOptions: { anchor: 'center', width: 64, minWidth: 44 } }]);
+  assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { host: '192.168.1.50', port: '35000' });
+  assert.match(f.notices.at(-1)[0], /settings saved/);
+  await f.emit('session_shutdown');
+});
+
+test('setup overlay reports an invalid value inline and cancels without saving', async t => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-overlay-'));
+  const settingsPath = join(dir, 'config.json');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const keys = ['\t', ...'\x7f'.repeat(5), '0', '\r', '\x1b'];
+  const f = fixture({ tuiMode: true, settingsPath, overlay: { keys } });
+  await f.commands.get('canvas-lan:setup').handler('', f.ctx);
+  assert.ok(f.overlayRenders.some(row => /GENTLE_CANVAS_LAN_PORT must be an integer/.test(row)));
+  assert.match(f.notices.at(-1)[0], /cancelled/);
+  await assert.rejects(readFile(settingsPath, 'utf8'), { code: 'ENOENT' });
+  assert.deepEqual(f.calls, []);
+  await f.emit('session_shutdown');
 });
 
 test('environment variables override saved menu values', async t => {

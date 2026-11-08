@@ -34,8 +34,8 @@ export function mergeSettings(env = process.env, saved = {}) {
   return merged;
 }
 
-/** Validate the complete persisted trio before writing; atomic replace, user-only file. */
-export async function saveSettings(path, values) {
+/** Validate the complete persisted trio before it is used or written. */
+export function validateSettings(values = {}) {
   const next = {};
   if (typeof values.host !== 'string' || !values.host.trim()) throw new TypeError('Host is required.');
   next.host = values.host.trim();
@@ -47,6 +47,12 @@ export async function saveSettings(path, values) {
     GENTLE_CANVAS_LAN_PORT: next.port,
     ...(next.publicOrigin ? { GENTLE_CANVAS_LAN_PUBLIC_ORIGIN: next.publicOrigin } : {}),
   });
+  return next;
+}
+
+/** Atomic replace of the validated settings; user-only file. */
+export async function saveSettings(path, values) {
+  const next = validateSettings(values);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${process.pid}.tmp`;
   try {
