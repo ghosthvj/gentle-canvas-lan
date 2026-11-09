@@ -33,7 +33,7 @@ To try it for a single run without touching your settings, use `pi -e git:github
 
 ## Configure
 
-Run `/canvas-lan:setup`. The modal validates inline, `esc` cancels, and the hints at the bottom respond to click and hover.
+Run `/canvas-lan:setup`.
 
 <p align="center">
   <img src="docs/assets/canvas-lan-setup.png" alt="The Canvas LAN setup modal with IP, port and public origin fields" width="520">
@@ -47,7 +47,7 @@ It writes `~/.config/gentle-canvas-lan/config.json` (mode `0600`, atomic replace
 | Port | `GENTLE_CANVAS_LAN_PORT` | Defaults to `34316`. |
 | Public origin | `GENTLE_CANVAS_LAN_PUBLIC_ORIGIN` | Optional exact `http(s)://host[:port]` origin when a reverse proxy terminates TLS. |
 
-Environment variables win per key over saved values. An older `GENTLE_CANVAS_LAN_HOST` is no longer read; `/canvas-lan:status` warns if it is still exported, and a settings file written before the rename is read once and rewritten under `ip`.
+Environment variables win per key over saved values.
 
 ## Commands
 
@@ -80,6 +80,6 @@ MIT. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 
 <p align="center">
   <a href="https://github.com/Gentleman-Programming/gentle-ai">
-    <img src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png" alt="Built with Gentle-AI">
+    <img width="220" src="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/docs/assets/brand/built-with-gentle-ai.png" alt="Built with Gentle-AI">
   </a>
 </p>

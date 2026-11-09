@@ -1,51 +1,38 @@
-# LAN panel renderer
+# LAN panel
 
-`src/lan-panel.js` exports `createLanPanel({ theme, truncateToWidth, visibleWidth })`.
-The parent supplies the active theme and terminal helpers from its host-resolved
-Pi TUI import. This module has no runtime dependencies, I/O or timers.
+`src/lan-panel.js` exports
+`createLanPanel({ theme, truncateToWidth, visibleWidth, decorated?, actionLabel? })`,
+the body of the sidebar card. The parent passes the active theme and text helpers;
+the module has no dependencies, I/O or timers.
 
 ## Component contract
 
-- `setUrl(string | null)` sets the LAN URL or clears the component. Clearing renders
-  `[]`, not an empty card. Invalid input throws `TypeError` with
-  `Expected a control-free HTTP(S) LAN URL or null.` and preserves the previous URL.
-- HTTP(S) URLs are canonicalized with `new URL(value).href`: internationalized
-  hostnames use IDNA and Unicode paths/queries use percent-encoding. This preserves
-  URL semantics, not literal Unicode spelling. Raw C0/C1 controls and DEL are
-  rejected **before** parsing; URLs with credentials are also rejected. Validation
-  of the configured LAN endpoint remains the configuration layer's responsibility.
-- `render(width)` returns styled rows: a compact `CANVAS LAN` header followed by
-  a `Open Design Canvas` (optionally decorated `- ▤ `) label and the complete
-  canonical LAN URL as plain wrapped text. The extension normally supplies a
-  short stable LAN redirect instead, so the card link fits one terminal line. The label also carries an OSC 8
-  destination for terminals that expose it, but plain URL text is the reliable
-  Ctrl+click path in hosts such as Herdr. The plain URL rows follow the action label; labels are never explicitly
-  underlined. `actionLabel: false` omits the action label entirely, which the
-  narrow fallback uses to show only its URL. The header is plain
-  `▾ CANVAS LAN`/`▸ CANVAS LAN` so the native card applies its own glyph and
-  title color; the document glyph lives in the body label. It never adds another address, frame, blank
-  padding, shortcuts or clipboard affordances. The shell owns the surrounding rail.
-- Every positive integer column budget is supported, including one column. The
-  header and label clip without an ellipsis; the hidden hyperlink destination
-  remains complete, including capability token, query and fragment. The label is
-  a single row, never a wrapped fragment of the target. Nonpositive or
-  nonfinite widths render no rows.
-- `digest()` returns the canonical URL, or an empty string when cleared.
-  `invalidate()` is a no-op because there is no rendering cache. Theme roles are
-  read at render time: a dim bold header and accented link label. The owning adapter must
-  arrange a redraw when the host theme changes; URL digest alone is not a theme key.
+- `setUrl(url | null)` sets or clears the link. Clearing renders no rows. A value
+  that is not a control-free `http(s)` URL without credentials throws `TypeError`
+  with `Expected a control-free HTTP(S) LAN URL or null.` and keeps the previous URL.
+  Accepted values are canonicalized with `URL#href`, so internationalized hostnames
+  use IDNA and paths or queries are percent-encoded.
+- `render(width)` returns styled rows:
 
-## Presentation limits
+  ```text
+  ▾ CANVAS LAN
+  - ▤ Open Design Canvas
+  http://192.0.2.50:8098/s/0123456789abcdef
+  ```
 
-Ctrl+click the visible URL. Herdr 0.9.5 exposes plain (including wrapped) URL
-text to its Ctrl+click handler but did not expose this card's OSC 8 label in
-practice, so the panel always renders the URL as selectable text; capability
-detection alone was not a reliable proxy for clickability. `/canvas-lan:status`
-and the tool output also carry the plain URL. The parent owns sidebar availability, hidden/narrow rail
-handling and fallback placement. This renderer does not claim inheritance of all
-shell visual settings or implement the fallback widget itself.
+  The header flips to `▸` when collapsed. The action label carries an OSC 8
+  destination for terminals that expose it, while the URL stays plain text so
+  terminal Ctrl+click works. Rows are clipped without an ellipsis and the label is
+  one row, never a wrapped fragment. Any positive width works, including one column;
+  nonpositive or nonfinite widths render nothing.
+  `decorated: false` drops the `- ▤ ` prefix and `actionLabel: false` shows only the
+  header and URL, which the narrow fallback uses.
+- `handleMouse(event)` toggles collapsed on a left click over the header row.
+- `digest()` returns a JSON string of the current URL and collapsed state, or
+  `[null,false]` when cleared.
+- `invalidate()` is a no-op: theme roles are read on every render, so the adapter must
+  redraw when the theme changes.
 
-Tests use deterministic injected theme/width helpers at 180, 48, 40, 20 and 1
-columns, including long tokens, IPv6, Unicode normalization and live theme changes.
-The parent separately checks the real Pi helper seam. No terminal screenshots were
-captured: ttyd is unavailable, so these checks are structural, not visual proof.
+The extension normally passes the short `/s/<code>` link so the card fits one terminal
+line; the full tokenized URL stays in `/canvas-lan:status` and in tool output. The
+shell owns the surrounding rail, placement, visibility and fallback mounting.

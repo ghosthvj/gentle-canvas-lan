@@ -1,66 +1,52 @@
-# Guarded sidebar footer adapter
+# Sidebar adapter
 
-`src/sidebar-adapter.js` exports `attachSidebar(tui, panel)`. It returns `null`
-for incompatible hosts or components; callers must retain their public widget
-fallback. This is a private compatibility adapter, not a supported shell API.
-No installed package paths are imported or modified.
+`src/sidebar-adapter.js` exports `attachSidebar(tui, panel)`, which composes the
+canvas panel into the shell's footer. It is a private compatibility adapter, not a
+supported shell API: it returns `null` for an incompatible host, and the caller must
+keep its public widget fallback. No installed package path is imported or modified.
 
-The host must be fullscreen, with terminal-owned
-`Symbol.for('gentle-pi.experimental-sidebar.state')`, a `parts` Map, and a footer
-with `render(width)` and `invalidate()`. The panel implements those same methods
-and may provide a string `digest()` and `handleMouse(event)`. The intended Canvas
-panel displays **LAN only**; this adapter neither constructs URLs nor changes
-Gentle Design's original local output.
+## Host contract
 
-## Attachment lifecycle
+The host must be in fullscreen mode and expose
+`Symbol.for('gentle-pi.experimental-sidebar.state')` with a `parts` Map and a footer
+that has `render(width)` and `invalidate()`. The panel implements the same two
+methods and may provide `digest()` and `handleMouse(event)`. The adapter composes the
+footer only: it builds no URLs and does not change the canvas's own local output.
 
-- `isMounted()` reports whether this attachment still belongs to the current
-  terminal state and footer chain. Unknown newer wrappers conservatively report
-  false, allowing the caller to select its fallback. In that case a captured
-  Canvas wrapper delegates only its original footer rows, so a foreign wrapper
-  cannot cause both a sidebar card and a fallback card to display the same URL.
-- `isActive()` also requires fullscreen mode, published `active === true`, and
-  successful ownership and visibility checks. Rendering/digests instead use
-  `ownsHost()` eligibility: the shell resets `active` while measuring a frame,
-  so using that transient output flag would cache a footer without the card.
-  Legacy hosts without `ownsHost()` retain the conservative active-flag check. If present, `ownsHost()` must return `true`
-  and `statusHidden()` must return `false`. Throwing or malformed policy hooks
-  hide the panel. Inactive/narrow rails never render the panel.
-- `invalidate()` changes the wrapper digest, clears measured segments, and asks
-  the TUI to render. The panel owns its data/cache; update or invalidate that
-  cache before calling this method. Host-driven footer invalidation continues
-  to invalidate both live components.
-- `dispose()` is idempotent. It restores the previous footer only while this
-  wrapper still owns the slot. Later owners are never overwritten. Calls to
-  `invalidate()` after disposal have no effect.
+## Attachment
 
-The previous footer renders first at the supplied width. Its row groups and
-loose rows are preserved; the panel gets a separate offset group with an
-exclusive end, so the shell theme frames the panel rather than the combined
-footer. An ungrouped previous footer receives its own group. The adapter emits
-no colors, performs no I/O in render, and leaves content sizing and semantic
-theme roles to the panel.
+- `isMounted()` — whether this attachment still belongs to the current terminal state
+  and footer chain. Unknown newer wrappers report `false` so the caller can fall back
+  to its widget.
+- `isActive()` — whether the panel should be rendered: fullscreen, published
+  `active === true`, ownership and visibility checks passing. Eligibility comes from
+  `ownsHost()` rather than the transient `active` flag, which the shell resets while
+  measuring a frame. When the host provides them, `ownsHost()` must return `true` and
+  `statusHidden()` must return `false`; malformed policy hooks hide the panel.
+  Inactive or narrow rails never render it.
+- `invalidate()` — clears measured segments and asks the TUI to render. Update the
+  panel's own data first; host-driven invalidation still reaches both components.
+- `dispose()` — idempotent. It restores the previous footer only while this wrapper
+  owns the slot, so a later owner is never overwritten.
 
-Mouse events use the last rendered row heights, preserving other event fields
-while translating `y` and `height` for the selected child. Invalidation clears
-these measurements; hidden panels receive no events. Previous and panel string
-digests participate in the wrapper digest. Missing, non-string or throwing
-digests degrade to explicit invalidation rather than breaking serialization.
+The previous footer renders first at the supplied width, with its row groups and
+loose rows preserved; the panel gets its own offset group so the shell frames it
+separately. The adapter emits no colors, performs no I/O while rendering, and leaves
+sizing and theme roles to the panel.
 
-Multiple Canvas attachments compose in order and can be disposed in either
-order. Disposed wrappers transparently delegate to their predecessor, without
-rendering the disposed panel. Local wrapper metadata lets the final owner
-restore the original directly. An MCP-style wrapper may precede or follow this
-adapter; its private stack symbol is never accessed. A newer foreign wrapper
-that captured this wrapper can keep calling it safely after disposal.
+Mouse events are translated from the last rendered row heights to the child that owns
+the pointer, preserving the other event fields. Hidden panels receive none.
 
-## Verification and limits
+Several canvas attachments compose in order and can be disposed in either order: a
+disposed wrapper delegates to its predecessor without rendering the disposed panel.
+A wrapper from another package may precede or follow this adapter, and it is never
+modified.
 
-Run `node --test test/sidebar-adapter.test.js` for deterministic fake-TUI checks.
-No real terminal session, themed screenshot, browser or LAN device is exercised
-by these tests. Host contract changes may disable this integration; callers
-must continue to support fallback display. This module does not mount itself,
-manage fallback widgets, discover links or change shell preferences.
+## Limits
 
-The footer composition pattern is adapted from MIT-licensed `mcp-sidebar`;
-see `../THIRD_PARTY_NOTICES.md` for attribution and the full license.
+Host contract changes can disable this integration; callers must keep a working
+fallback. The adapter does not mount itself, manage fallback widgets, discover links
+or change shell preferences.
+
+The footer composition pattern is adapted from MIT-licensed `mcp-sidebar`; see
+[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) for attribution.
