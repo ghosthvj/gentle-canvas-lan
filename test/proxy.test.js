@@ -94,6 +94,7 @@ test('guards reject hosts, origins and raw path tricks without upstream effects'
     '/wrongtokenabcdef/', `http://${host}/${token}/`, `/%61${token.slice(1)}/`,
     `/${token}extra/`, `/${token}/../other`, `/${token}/%2e%2e/other`,
     `/${token}\\other`, `/${token}/%5cother`, `/${token}/./files/a`, '/',
+    `/${token}/%252e%252e/other`, `/%25${token.slice(1)}/`,
   ]) await rejected(f, path, {}, 404);
   for (const origin of ['https://evil.test', `${publicOrigin}/`, 'null']) {
     await rejected(f, `/${token}/`, { headers: { origin } }, 403);
@@ -263,6 +264,9 @@ test('stable short capability redirects to the current canvas and never upstream
     }).on('error', reject);
   });
   assert.equal((await get('/s/wrongwrongwrong')).status, 404);
+  assert.equal((await get(`/s/${shortCode}X`)).status, 404, 'prefix-extended code must not redirect');
+  assert.equal((await get(`/s/${shortCode.slice(0, -1)}`)).status, 404, 'truncated code must not redirect');
+  assert.equal((await get(`/s/${shortCode}/extra`)).status, 404, 'code with suffix path must not redirect');
   proxy.setTarget({ origin: f.origin, token });
   assert.equal((await get(`/s/${shortCode}`)).status, 404, 'target without a public path cannot redirect');
   await proxy.stop();

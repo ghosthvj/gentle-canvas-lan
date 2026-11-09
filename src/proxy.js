@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 
 const errors = { 421: 'Misdirected Request\n', 404: 'Not Found\n', 403: 'Forbidden\n' };
 // The LAN port stays reserved while the local canvas is gone, so a browser that
@@ -27,6 +28,15 @@ function cleanHeaders(headers) {
     name !== 'x-real-ip' && !name.startsWith('x-forwarded-')));
 }
 
+// Constant-surface comparison for capability strings taken from request paths.
+// Length differences short-circuit (a timing leak of length alone is harmless here);
+// equal-length comparisons run in time independent of matching bytes.
+function safeEqual(a, b) {
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 function validateTarget(target) {
   if (target === null) return null;
   // URL.origin omits :80, so canonical loopback HTTP denotes that explicit default.
@@ -49,13 +59,20 @@ function validateTarget(target) {
 }
 
 // Inspect raw segments before URL normalization can hide traversal or token encoding.
+// Decoding is iterative: a segment like %252e%252e (double-encoded dots) must be
+// rejected, not forwarded for the upstream server to decode again.
 function remainderFor(raw, token) {
   const path = raw.split('?')[0];
   const segments = path.split('/');
-  if (!raw.startsWith('/') || raw.includes('#') || segments[1] !== token) return null;
+  if (!raw.startsWith('/') || raw.includes('#') || !safeEqual(segments[1] ?? '', token)) return null;
   try {
     for (const segment of segments) {
-      const decoded = decodeURIComponent(segment);
+      let decoded = segment;
+      for (let round = 0; round < 5; round += 1) {
+        const next = decodeURIComponent(decoded);
+        if (next === decoded) break;
+        decoded = next;
+      }
       if (decoded === '.' || decoded === '..' || /[\\/\x00-\x1f\x7f]/.test(decoded)) return null;
     }
   } catch { return null; }
@@ -104,7 +121,7 @@ export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
     };
     if (req.headers.host !== external.host) return fail(421);
     const current = target;
-    if (shortCode && req.url === `/s/${shortCode}`) {
+    if (shortCode && safeEqual(req.url ?? '', `/s/${shortCode}`)) {
       if (!current?.path || req.method !== 'GET') return fail(current ? 404 : 502);
       res.writeHead(302, { location: `${publicOrigin}${current.path}`, 'cache-control': 'no-store' });
       return res.end();
