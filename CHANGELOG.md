@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1] - 2026-11-09
+
+- Changing the bind port no longer drops the registered canvas: saving the setup
+  modal rebuilds the listener and replays the current canvas onto it, so the next
+  `/canvas-lan:start` serves it instead of answering `502`.
+- The stable short link is only reported while a canvas is registered.
+
 ## [0.1.0] - 2026-11-09
 
 First published version.

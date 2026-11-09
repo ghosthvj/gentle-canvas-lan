@@ -1,6 +1,6 @@
 {
   "name": "@ghosthvj/gentle-canvas-lan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fixed LAN endpoint for the Gentle Design canvas: guarded proxy, stable short link and copyable URLs for the Pi coding agent.",
   "type": "module",
   "engines": {
