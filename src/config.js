@@ -79,9 +79,12 @@ export function readConfig(env = process.env) {
     : parsePublicOrigin(env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN);
   const maxBodyBytes = env.GENTLE_CANVAS_LAN_MAX_BODY_BYTES === undefined
     ? undefined : parseMaxBody(env.GENTLE_CANVAS_LAN_MAX_BODY_BYTES, 'MAX BODY BYTES');
+  const maxConnections = env.GENTLE_CANVAS_LAN_MAX_CONNECTIONS === undefined
+    ? undefined : parseMaxBody(env.GENTLE_CANVAS_LAN_MAX_CONNECTIONS, 'MAX CONNECTIONS');
   return Object.freeze({
     host, port, publicOrigin,
     ...(maxBodyBytes !== undefined ? { maxBodyBytes } : {}),
+    ...(maxConnections !== undefined ? { maxConnections } : {}),
   });
 }
 
