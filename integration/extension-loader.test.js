@@ -22,10 +22,10 @@ test('real entry under host loader mounts a sidebar rather than silent string fa
   await once(reserve, 'listening');
   const port = reserve.address().port;
   await new Promise(resolve => reserve.close(resolve));
-  const keys = ['GENTLE_CANVAS_LAN_HOST', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN', 'XDG_CONFIG_HOME'];
+  const keys = ['GENTLE_CANVAS_LAN_IP', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN', 'XDG_CONFIG_HOME'];
   const before = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   process.env.XDG_CONFIG_HOME = `/nonexistent/canvas-loader-${process.pid}`;
-  process.env.GENTLE_CANVAS_LAN_HOST = '127.0.0.1';
+  process.env.GENTLE_CANVAS_LAN_IP = '127.0.0.1';
   process.env.GENTLE_CANVAS_LAN_PORT = String(port);
   delete process.env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN;
   const handlers = new Map();

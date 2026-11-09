@@ -4,7 +4,7 @@
 import { truncateToWidth, visibleWidth } from './text-fit.js';
 
 const FIELDS = [
-  { key: 'host', label: 'Host / IP to bind', placeholder: '192.168.1.20' },
+  { key: 'ip', label: 'IP to bind', placeholder: '192.168.1.20' },
   { key: 'port', label: 'Port', placeholder: '34316' },
   { key: 'publicOrigin', label: 'Public origin (optional; empty clears)', placeholder: 'https://canvas.example' },
 ];

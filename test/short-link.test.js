@@ -98,7 +98,7 @@ test('card shows only the short capability while status and tool output keep the
   await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
   const upstreamPort = upstream.address().port;
   installCanvasLan(pi, {
-    env: { GENTLE_CANVAS_LAN_HOST: '127.0.0.1', GENTLE_CANVAS_LAN_PORT: '34317' },
+    env: { GENTLE_CANVAS_LAN_IP: '127.0.0.1', GENTLE_CANVAS_LAN_PORT: '34317' },
     loadUi: async () => ({
       truncateToWidth: (value, width) => value.slice(0, width),
       visibleWidth: value => value.length,
@@ -118,7 +118,7 @@ test('card shows only the short capability while status and tool output keep the
       'plain URL row fits one line');
     await handlers.get('command:canvas-lan:status')('', ctx);
     assert.match(notices.at(-1)[0], new RegExp(`Canvas LAN: http://127\\.0\\.0\\.1:34317/${token}/d/demo/`));
-    assert.match(notices.at(-1)[0], /Canvas LAN host: 127\.0\.0\.1 \(env\)/);
+    assert.match(notices.at(-1)[0], /Canvas LAN IP: 127\.0\.0\.1 \(env\)/);
     assert.match(notices.at(-1)[0], /Canvas LAN port: 34317 \(env\)/);
   } finally {
     await handlers.get('session_shutdown')({}, ctx);

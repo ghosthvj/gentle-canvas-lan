@@ -12,13 +12,13 @@ const SETUP_OVERLAY = { overlay: true, overlayOptions: { anchor: 'center', width
 /** Sequential prompts, kept for hosts without overlay support. */
 const promptFields = async (ctx, current) => {
   if (typeof ctx.ui.input !== 'function') return undefined;
-  const host = await ctx.ui.input('LAN host/IP to bind', current.host);
-  if (host === undefined) return undefined;
-  const port = await ctx.ui.input('LAN port', current.port);
+  const ip = await ctx.ui.input('IP to bind', current.ip);
+  if (ip === undefined) return undefined;
+  const port = await ctx.ui.input('Port', current.port);
   if (port === undefined) return undefined;
   const publicOrigin = await ctx.ui.input('External HTTPS origin (optional; empty clears)', current.publicOrigin);
   if (publicOrigin === undefined) return undefined;
-  return { host, port, publicOrigin };
+  return { ip, port, publicOrigin };
 };
 
 /** Expose LAN access while preserving Gentle Design's own local result fields. */
@@ -205,7 +205,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       controller = undefined;
       clearLinks();
     }
-    const overrides = ['GENTLE_CANVAS_LAN_HOST', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN']
+    const overrides = ['GENTLE_CANVAS_LAN_IP', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN']
       .filter(key => env[key] !== undefined);
     notify(ctx, `Canvas LAN settings saved to ${settingsPath}. Open a design or run /canvas-lan:start to use them.`
       + (overrides.length ? ` Environment overrides active for: ${overrides.join(', ')}.` : ''));
@@ -222,15 +222,18 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     try {
       config = effectiveConfig();
     } catch {
-      lines.push('Canvas LAN is not configured. Run /canvas-lan:setup or set GENTLE_CANVAS_LAN_HOST.');
+      lines.push('Canvas LAN is not configured. Run /canvas-lan:setup or set GENTLE_CANVAS_LAN_IP.');
     }
     if (config) {
       const source = (key, savedKey) => env[key] !== undefined ? 'env' : saved[savedKey] !== undefined ? 'saved' : 'unset';
-      lines.push(`Canvas LAN host: ${config.host} (${source('GENTLE_CANVAS_LAN_HOST', 'host')})`);
+      lines.push(`Canvas LAN IP: ${config.host} (${source('GENTLE_CANVAS_LAN_IP', 'ip')})`);
       lines.push(`Canvas LAN port: ${config.port} (${source('GENTLE_CANVAS_LAN_PORT', 'port')})`);
       if (config.publicOrigin) {
         lines.push(`Canvas LAN origin: ${config.publicOrigin} (${source('GENTLE_CANVAS_LAN_PUBLIC_ORIGIN', 'publicOrigin')})`);
       }
+    }
+    if (env.GENTLE_CANVAS_LAN_HOST !== undefined) {
+      lines.push('GENTLE_CANVAS_LAN_HOST is no longer read; export GENTLE_CANVAS_LAN_IP instead.');
     }
     const state = controller ? await liveState(controller) : { running: false };
     if (controller) report(ctx, state, false);
@@ -245,10 +248,10 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     else await (await getController()).stop();
     notify(ctx, 'Canvas LAN proxy stopped. Automatic start is disabled until /canvas-lan:start.');
   });
-  command('canvas-lan:setup', 'Configure the LAN design-canvas host and port', async ctx => {
+  command('canvas-lan:setup', 'Configure the LAN design-canvas IP and port', async ctx => {
     await ensureSettings();
     const current = {
-      host: saved.host ?? env.GENTLE_CANVAS_LAN_HOST ?? '',
+      ip: saved.ip ?? env.GENTLE_CANVAS_LAN_IP ?? '',
       port: saved.port ?? env.GENTLE_CANVAS_LAN_PORT ?? '34316',
       publicOrigin: saved.publicOrigin ?? env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN ?? '',
     };

@@ -16,7 +16,7 @@ The listener stays fixed; reopening a restarted canvas updates the upstream and 
 
 Requires Linux with Gentle Shell/Gentle Design and Node.js 22+. This package has no runtime dependencies beyond Node and its host.
 
-Set the address once with the setup modal — a small centered window, not a full screen — persisted in `$XDG_CONFIG_HOME/gentle-canvas-lan/config.json` (default `~/.config/gentle-canvas-lan/config.json`):
+Set the address once with the setup modal — a small centered window, not a full screen — persisted in `$XDG_CONFIG_HOME/gentle-canvas-lan/config.json` (default `~/.config/gentle-canvas-lan/config.json`) under the keys `ip`, `port` and `publicOrigin`:
 
 ```text
 /canvas-lan:setup
@@ -47,9 +47,9 @@ This is a **private host contract**, not an official sidebar API. No installed f
 | Command | Behavior |
 | --- | --- |
 | `/canvas-lan:start` | Enable/start the fixed listener. It never advertises a link for a canvas that stopped answering: the card appears only while the registered canvas is alive. |
-| `/canvas-lan:status` | Report effective host/port (env or saved), listener state and current LAN URL when available. It probes the registration first and retires a stale card. |
+| `/canvas-lan:status` | Report the effective IP and port (env or saved), listener state and current LAN URL when available. It probes the registration first and retires a stale card. |
 | `/canvas-lan:stop` | Stop the listener and disable automatic restart until explicit start. |
-| `/canvas-lan:setup` | Open a centered configuration modal for host, port and optional external origin; save them and rebuild the proxy. The `save` / `next` / `cancel` hints at the bottom are clickable, and `esc` cancels even on terminals that report extended key sequences. |
+| `/canvas-lan:setup` | Open a centered configuration modal for the bind IP, port and optional external origin; save them and rebuild the proxy. The `save` / `next` / `cancel` hints at the bottom are clickable, and `esc` cancels even on terminals that report extended key sequences. |
 
 Stopping the design canvas clears its registered target. Session shutdown closes the proxy and pending startup. A port conflict is reported without killing its owner or silently choosing another port. Independent sessions need distinct configured ports.
 
@@ -57,7 +57,7 @@ A registration is a claim, not a guarantee: `start` and `status` probe it once o
 
 ## Configuration and security
 
-- `GENTLE_CANVAS_LAN_HOST` is required: a concrete IP, not `0.0.0.0`, `::` or an automatically selected NIC.
+- `GENTLE_CANVAS_LAN_IP` is required: a concrete IP, not `0.0.0.0`, `::` or an automatically selected NIC. It was renamed from `GENTLE_CANVAS_LAN_HOST`, which is no longer read; `/canvas-lan:status` warns when the old variable is still exported.
 - `GENTLE_CANVAS_LAN_PORT` defaults to `34316`.
 - `GENTLE_CANVAS_LAN_PUBLIC_ORIGIN` optionally specifies an exact external HTTP/HTTPS origin (no trailing slash). Otherwise it is derived from the bind address and port.
 - HTTP does not encrypt tokenized URLs, designs or comments. Use only a trusted network, restrict inbound access yourself, and never forward this port to the internet.
@@ -74,7 +74,7 @@ Details: [configuration](docs/configuration.md), [proxy](docs/proxy.md), [contro
 For a reverse proxy on the same host, bind the extension to loopback and specify its external origin:
 
 ```sh
-export GENTLE_CANVAS_LAN_HOST=127.0.0.1
+export GENTLE_CANVAS_LAN_IP=127.0.0.1
 export GENTLE_CANVAS_LAN_PUBLIC_ORIGIN=https://canvas.example
 ```
 
