@@ -56,12 +56,17 @@ Environment variables win per key over saved values.
 
 ## Commands
 
-| Command | What it does |
-| --- | --- |
-| `/canvas-lan:setup` | Configure the bind IP, port and optional public origin. |
-| `/canvas-lan:start` | Enable the listener. The card appears only while the registered canvas answers. |
-| `/canvas-lan:status` | Show the effective IP and port with their source (`env`/`saved`), the listener state and the current LAN link. |
-| `/canvas-lan:stop` | Stop listening and disable automatic start until you start it again. |
+<table>
+<thead>
+<tr><th width="230" align="left">Command</th><th align="left">What it does</th></tr>
+</thead>
+<tbody>
+<tr><td width="230"><code>/canvas-lan:setup</code></td><td>Configure the bind IP, port and optional public origin.</td></tr>
+<tr><td width="230"><code>/canvas-lan:start</code></td><td>Enable the listener. The card appears only while the registered canvas answers.</td></tr>
+<tr><td width="230"><code>/canvas-lan:status</code></td><td>Show the effective IP and port with their source (<code>env</code>/<code>saved</code>), the listener state and the current LAN link.</td></tr>
+<tr><td width="230"><code>/canvas-lan:stop</code></td><td>Stop listening and disable automatic start until you start it again.</td></tr>
+</tbody>
+</table>
 
 In the TUI, command results and errors stay in the transcript instead of the one-line status slot that the next notification would replace.
 
