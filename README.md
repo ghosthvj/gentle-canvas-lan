@@ -46,12 +46,16 @@ This is a **private host contract**, not an official sidebar API. No installed f
 
 | Command | Behavior |
 | --- | --- |
-| `/canvas-lan:start` | Enable/start the fixed listener. It never advertises a link for a canvas that stopped answering: the card appears only while the registered canvas is alive. |
-| `/canvas-lan:status` | Report the effective IP and port (env or saved), listener state and current LAN URL when available. It probes the registration first and retires a stale card. |
-| `/canvas-lan:stop` | Stop the listener and disable automatic restart until explicit start. |
 | `/canvas-lan:setup` | Open a centered configuration modal for the bind IP, port and optional external origin; save them and rebuild the proxy. The `save` / `next` / `cancel` hints at the bottom are clickable, and `esc` cancels even on terminals that report extended key sequences. |
+| `/canvas-lan:start` | Enable/start the fixed listener. It never advertises a link for a canvas that stopped answering: the card appears only while the registered canvas is alive. |
+| `/canvas-lan:status` | Report the effective IP and port (env or saved), listener state and current LAN URL when available. It probes the registration first and retires a stale card. In the TUI the readout is appended to the transcript as a custom entry, so a later notification cannot replace it. |
+| `/canvas-lan:stop` | Stop the listener and disable automatic restart until explicit start. |
+
+The order in this table is the registration order, which is the order the host shows in its command menu: configure, start, inspect, stop.
 
 Stopping the design canvas clears its registered target. Session shutdown closes the proxy and pending startup. A port conflict is reported without killing its owner or silently choosing another port. Independent sessions need distinct configured ports.
+
+In the TUI, command feedback is transcript content: `/canvas-lan:start`, `/canvas-lan:stop`, `/canvas-lan:setup` results and errors are appended as custom entries (errors in the error color) instead of using the shell's single-slot status line, which the next info notification would erase. Non-TUI hosts keep using `notify`.
 
 A registration is a claim, not a guarantee: `start` and `status` probe it once over HTTP before exposing a link, and revoke it when the local canvas no longer answers. While the port stays reserved without a live canvas, any request to the LAN address gets a short `text/html` page that says the canvas is not running and how to bring it back, instead of a bare `Bad Gateway`.
 

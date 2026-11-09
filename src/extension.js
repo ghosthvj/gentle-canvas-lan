@@ -4,8 +4,15 @@ import { attachSidebar } from './sidebar-adapter.js';
 import { createLanPanel } from './lan-panel.js';
 import { defaultSettingsPath, loadSettings, mergeSettings, saveSettings, validateSettings } from './settings.js';
 import { createSetupPanel } from './setup-panel.js';
+import { truncateToWidth } from './text-fit.js';
 
 const noticeUrl = /^Design canvas(?: refreshed)?: (http:\/\/(?:127\.0\.0\.1|localhost):\d+\/\S*)/m;
+// The TUI keeps one transient dim status line and each new info notification
+// replaces the previous one, so a multi-line readout would vanish as soon as an
+// unrelated extension notified. Persist the readout as a custom entry instead.
+const STATUS_ENTRY = 'canvas-lan-status';
+const NOTICE_ENTRY = 'canvas-lan-notice';
+const statusLines = entry => (Array.isArray(entry?.data?.lines) ? entry.data.lines : []);
 // Centered modal for the setup form, matching the Gentle Shell usage overlay.
 const SETUP_OVERLAY = { overlay: true, overlayOptions: { anchor: 'center', width: 64, minWidth: 44 } };
 
@@ -137,7 +144,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       void track(showLinks(ctx));
     } else if (!state.running || !state.lanUrl) clearLinks();
     if (!announce) return;
-    notify(ctx, state.running
+    showNotice(ctx, state.running
       ? state.lanUrl ? `Canvas LAN: ${state.lanUrl}` : 'Canvas LAN proxy running. Open a design to get its URL.'
       : 'Canvas LAN proxy is not running. Use /canvas-lan:start to enable it.');
   };
@@ -157,7 +164,7 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       return state;
     } catch (error) {
       // Config/validation errors are sanitized by the config module. Never echo raw URLs.
-      notify(ctx, error instanceof TypeError ? error.message : 'Could not start the LAN canvas proxy. Check the configured address and port.', 'error');
+      showNotice(ctx, error instanceof TypeError ? error.message : 'Could not start the LAN canvas proxy. Check the configured address and port.', 'error');
     }
   })());
   const watch = ctx => {
@@ -179,6 +186,37 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
 
   pi.on('session_start', (_event, ctx) => watch(ctx));
   pi.on('input', (_event, ctx) => watch(ctx));
+  const paintLines = (entry, theme, role) => {
+    const lines = statusLines(entry);
+    return {
+      render: width => lines.map(line => theme.fg(role, truncateToWidth(line, width))),
+      invalidate() {},
+      dispose() {},
+    };
+  };
+  if (typeof pi.registerEntryRenderer === 'function') {
+    pi.registerEntryRenderer(STATUS_ENTRY, (entry, _options, theme) => paintLines(entry, theme, 'dim'));
+    pi.registerEntryRenderer(NOTICE_ENTRY, (entry, _options, theme) => {
+      const level = entry?.data?.level;
+      return paintLines(entry, theme, level === 'error' ? 'error' : level === 'warning' ? 'warning' : 'dim');
+    });
+  }
+  const showStatus = (ctx, lines) => {
+    if (!closed && ctx.mode === 'tui' && typeof pi.appendEntry === 'function') {
+      pi.appendEntry(STATUS_ENTRY, { lines });
+      return;
+    }
+    notify(ctx, lines.join('\n'));
+  };
+  // Command feedback is transcript content in the TUI: the shared status line is
+  // single-slot, so any later notification would erase it.
+  const showNotice = (ctx, text, level = 'info') => {
+    if (!closed && ctx.mode === 'tui' && typeof pi.appendEntry === 'function') {
+      pi.appendEntry(NOTICE_ENTRY, { lines: [text], level });
+      return;
+    }
+    notify(ctx, text, level);
+  };
   const command = (name, description, handler) => pi.registerCommand(name, {
     description,
     handler: async (_args, ctx) => {
@@ -186,18 +224,18 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       watch(ctx);
       try { await handler(ctx); }
       catch (error) {
-        notify(ctx, error instanceof TypeError ? error.message : 'Could not start the LAN canvas proxy. Check the configured address and port.', 'error');
+        showNotice(ctx, error instanceof TypeError ? error.message : 'Could not start the LAN canvas proxy. Check the configured address and port.', 'error');
       }
     },
   });
   // Persist the collected values once, then rebuild the proxy so the new endpoint binds.
   const saveSetup = async (ctx, values) => {
-    if (!values) return notify(ctx, 'LAN setup cancelled; nothing changed.');
+    if (!values) return showNotice(ctx, 'LAN setup cancelled; nothing changed.');
     let next;
     try {
       next = await saveSettings(settingsPath, values);
     } catch (error) {
-      return notify(ctx, error instanceof TypeError ? error.message : 'Could not save the Canvas LAN settings. Check the configured address and port.', 'error');
+      return showNotice(ctx, error instanceof TypeError ? error.message : 'Could not save the Canvas LAN settings. Check the configured address and port.', 'error');
     }
     saved = next;
     if (controller) {
@@ -207,9 +245,46 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     }
     const overrides = ['GENTLE_CANVAS_LAN_IP', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN']
       .filter(key => env[key] !== undefined);
-    notify(ctx, `Canvas LAN settings saved to ${settingsPath}. Open a design or run /canvas-lan:start to use them.`
+    showNotice(ctx, `Canvas LAN settings saved to ${settingsPath}. Open a design or run /canvas-lan:start to use them.`
       + (overrides.length ? ` Environment overrides active for: ${overrides.join(', ')}.` : ''));
   };
+  command('canvas-lan:setup', 'Configure the LAN design-canvas IP and port', async ctx => {
+    await ensureSettings();
+    const current = {
+      ip: saved.ip ?? env.GENTLE_CANVAS_LAN_IP ?? '',
+      port: saved.port ?? env.GENTLE_CANVAS_LAN_PORT ?? '34316',
+      publicOrigin: saved.publicOrigin ?? env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN ?? '',
+    };
+    if (ctx.mode !== 'tui' || typeof ctx.ui.custom !== 'function') {
+      if (!ctx.hasUI || typeof ctx.ui.input !== 'function') return showNotice(ctx, '/canvas-lan:setup needs an interactive UI.', 'warning');
+      return saveSetup(ctx, await promptFields(ctx, current));
+    }
+    // The modal validates inline, so a rejected value never closes the form.
+    const values = await ctx.ui.custom(async (tui, theme, _keybindings, done) => {
+      // Extended key protocols deliver Escape as \x1b[27u; only the host's
+      // matcher knows every encoding, so pass it in when it is available.
+      let matchesKey;
+      try { matchesKey = (await (uiTools ??= loadUi()))?.matchesKey; } catch { matchesKey = undefined; }
+      return createSetupPanel({
+        theme,
+        values: current,
+        matchesKey,
+        validate: candidate => {
+          try {
+            validateSettings(candidate);
+            return null;
+          } catch (error) {
+            return error instanceof TypeError ? error.message : 'Invalid settings.';
+          }
+        },
+        submit: next => done(next),
+        cancel: () => done(undefined),
+        requestRender: () => tui.requestRender(),
+      });
+    }, SETUP_OVERLAY);
+    await saveSetup(ctx, values);
+  });
+
   command('canvas-lan:start', 'Start the LAN design-canvas proxy', async ctx => {
     const instance = await getController();
     await instance.start();
@@ -240,49 +315,13 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     lines.push(state.running
       ? state.lanUrl ? `Canvas LAN: ${state.lanUrl}` : 'Canvas LAN proxy running. Open a design to get its URL.'
       : 'Canvas LAN proxy is not running. Use /canvas-lan:start to enable it.');
-    notify(ctx, lines.join('\n'));
+    showStatus(ctx, lines);
   });
   command('canvas-lan:stop', 'Stop the LAN design-canvas proxy', async ctx => {
     clearLinks();
     if (controller) await controller.stop();
     else await (await getController()).stop();
-    notify(ctx, 'Canvas LAN proxy stopped. Automatic start is disabled until /canvas-lan:start.');
-  });
-  command('canvas-lan:setup', 'Configure the LAN design-canvas IP and port', async ctx => {
-    await ensureSettings();
-    const current = {
-      ip: saved.ip ?? env.GENTLE_CANVAS_LAN_IP ?? '',
-      port: saved.port ?? env.GENTLE_CANVAS_LAN_PORT ?? '34316',
-      publicOrigin: saved.publicOrigin ?? env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN ?? '',
-    };
-    if (ctx.mode !== 'tui' || typeof ctx.ui.custom !== 'function') {
-      if (!ctx.hasUI || typeof ctx.ui.input !== 'function') return notify(ctx, '/canvas-lan:setup needs an interactive UI.', 'warning');
-      return saveSetup(ctx, await promptFields(ctx, current));
-    }
-    // The modal validates inline, so a rejected value never closes the form.
-    const values = await ctx.ui.custom(async (tui, theme, _keybindings, done) => {
-      // Extended key protocols deliver Escape as \x1b[27u; only the host's
-      // matcher knows every encoding, so pass it in when it is available.
-      let matchesKey;
-      try { matchesKey = (await (uiTools ??= loadUi()))?.matchesKey; } catch { matchesKey = undefined; }
-      return createSetupPanel({
-        theme,
-        values: current,
-        matchesKey,
-        validate: candidate => {
-          try {
-            validateSettings(candidate);
-            return null;
-          } catch (error) {
-            return error instanceof TypeError ? error.message : 'Invalid settings.';
-          }
-        },
-        submit: next => done(next),
-        cancel: () => done(undefined),
-        requestRender: () => tui.requestRender(),
-      });
-    }, SETUP_OVERLAY);
-    await saveSetup(ctx, values);
+    showNotice(ctx, 'Canvas LAN proxy stopped. Automatic start is disabled until /canvas-lan:start.');
   });
   pi.on('tool_result', async (event, ctx) => {
     if (closed || event.toolName !== 'gentle_design' || event.isError) return;
