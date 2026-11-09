@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile, chmod, unlink } from 'node:fs/promises';
+import { mkdir, readFile, rename, open, chmod, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { readConfig } from './config.js';
@@ -61,11 +61,18 @@ export async function saveSettings(path, values) {
   const next = validateSettings(values);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${process.pid}.tmp`;
+  // 'wx' refuses to create through a pre-planted symlink or leftover temp file,
+  // so a local writer can never redirect the settings payload.
+  let handle;
   try {
-    await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-    await chmod(temporary, 0o600);
+    handle = await open(temporary, 'wx', 0o600);
+    await handle.writeFile(`${JSON.stringify(next, null, 2)}\n`);
+    await handle.close();
+    handle = undefined;
+    await chmod(temporary, 0o600); // Mode is a request with 'wx'; enforce it after creation.
     await rename(temporary, path);
   } catch (error) {
+    if (handle) await handle.close().catch(() => {});
     await unlink(temporary).catch(() => {});
     throw error;
   }

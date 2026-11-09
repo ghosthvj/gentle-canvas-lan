@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, symlink, writeFile, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { defaultSettingsPath, loadSettings, mergeSettings, saveSettings } from '../src/settings.js';
 
 const temp = async t => {
@@ -40,6 +40,24 @@ test('saving validates atomically, writes only known keys and makes the file pri
   ]) {
     await assert.rejects(saveSettings(path, values), TypeError, label);
   }
+  assert.deepEqual(JSON.parse(await readFile(path, 'utf8')), saved);
+});
+
+test('a pre-planted temp-file symlink makes the save fail without writing through it', async t => {
+  const path = await temp(t);
+  const planted = join(dirname(path), `${basename(path)}.${process.pid}.tmp`);
+  const victim = join(dirname(path), 'victim.txt');
+  await writeFile(victim, 'do not touch');
+  await symlink(victim, planted);
+  // Exclusive creation refuses the planted path instead of following the link.
+  await assert.rejects(saveSettings(path, { ip: '192.168.1.20', port: '34316' }), /EEXIST/);
+  assert.equal(await readFile(victim, 'utf8'), 'do not touch', 'victim untouched');
+  assert.deepEqual(await loadSettings(path), {}, 'no settings were written through the link');
+  // Cleanup removes the artifact; a retry then succeeds normally.
+  let remains = true;
+  try { await lstat(planted); } catch { remains = false; }
+  assert.equal(remains, false, 'cleanup removes the planted path');
+  const saved = await saveSettings(path, { ip: '192.168.1.20', port: '34316' });
   assert.deepEqual(JSON.parse(await readFile(path, 'utf8')), saved);
 });
 
