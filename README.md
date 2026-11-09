@@ -49,7 +49,7 @@ This is a **private host contract**, not an official sidebar API. No installed f
 | `/canvas-lan:start` | Enable/start the fixed listener. It never advertises a link for a canvas that stopped answering: the card appears only while the registered canvas is alive. |
 | `/canvas-lan:status` | Report effective host/port (env or saved), listener state and current LAN URL when available. It probes the registration first and retires a stale card. |
 | `/canvas-lan:stop` | Stop the listener and disable automatic restart until explicit start. |
-| `/canvas-lan:setup` | Open a centered configuration modal for host, port and optional external origin; save them and rebuild the proxy. |
+| `/canvas-lan:setup` | Open a centered configuration modal for host, port and optional external origin; save them and rebuild the proxy. The `save` / `next` / `cancel` hints at the bottom are clickable, and `esc` cancels even on terminals that report extended key sequences. |
 
 Stopping the design canvas clears its registered target. Session shutdown closes the proxy and pending startup. A port conflict is reported without killing its owner or silently choosing another port. Independent sessions need distinct configured ports.
 

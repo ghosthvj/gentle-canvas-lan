@@ -257,21 +257,28 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       return saveSetup(ctx, await promptFields(ctx, current));
     }
     // The modal validates inline, so a rejected value never closes the form.
-    const values = await ctx.ui.custom((tui, theme, _keybindings, done) => createSetupPanel({
-      theme,
-      values: current,
-      validate: candidate => {
-        try {
-          validateSettings(candidate);
-          return null;
-        } catch (error) {
-          return error instanceof TypeError ? error.message : 'Invalid settings.';
-        }
-      },
-      submit: next => done(next),
-      cancel: () => done(undefined),
-      requestRender: () => tui.requestRender(),
-    }), SETUP_OVERLAY);
+    const values = await ctx.ui.custom(async (tui, theme, _keybindings, done) => {
+      // Extended key protocols deliver Escape as \x1b[27u; only the host's
+      // matcher knows every encoding, so pass it in when it is available.
+      let matchesKey;
+      try { matchesKey = (await (uiTools ??= loadUi()))?.matchesKey; } catch { matchesKey = undefined; }
+      return createSetupPanel({
+        theme,
+        values: current,
+        matchesKey,
+        validate: candidate => {
+          try {
+            validateSettings(candidate);
+            return null;
+          } catch (error) {
+            return error instanceof TypeError ? error.message : 'Invalid settings.';
+          }
+        },
+        submit: next => done(next),
+        cancel: () => done(undefined),
+        requestRender: () => tui.requestRender(),
+      });
+    }, SETUP_OVERLAY);
     await saveSetup(ctx, values);
   });
   pi.on('tool_result', async (event, ctx) => {

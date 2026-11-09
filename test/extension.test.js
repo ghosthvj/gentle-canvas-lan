@@ -42,8 +42,14 @@ function fixture(options = {}) {
       async custom(factory, overlayOptions) {
         overlays.push(overlayOptions);
         let finish;
-        const result = new Promise(done => { finish = done; });
-        const component = factory({ requestRender() {} }, theme, {}, value => finish(value));
+        // A driven overlay must finish: without this guard a stuck panel would
+        // hang the whole file instead of failing one test.
+        const result = new Promise((resolve, reject) => {
+          const guard = setTimeout(() => reject(new Error('setup overlay never finished')), 200);
+          guard.unref();
+          finish = value => { clearTimeout(guard); resolve(value); };
+        });
+        const component = await factory({ requestRender() {} }, theme, {}, value => finish(value));
         for (const key of options.overlay.keys) {
           component.handleInput(key);
           overlayRenders.push(component.render(60).join('\n'));
@@ -63,7 +69,12 @@ function fixture(options = {}) {
   };
   const original = ui.notify;
   const ctx = { hasUI: true, ui, ...(options.tuiMode ? { mode: 'tui' } : {}) };
-  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, settingsPath: options.settingsPath ?? '/nonexistent/gentle-canvas-lan/config.json', makeController: (opts) => { calls.push('construct'); calls.push(opts?.config); return controller; }, loadUi: async () => ({ truncateToWidth: (value, width) => value.slice(0, width), visibleWidth: value => value.length }), ...options });
+  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, settingsPath: options.settingsPath ?? '/nonexistent/gentle-canvas-lan/config.json', makeController: (opts) => { calls.push('construct'); calls.push(opts?.config); return controller; }, loadUi: async () => ({
+    truncateToWidth: (value, width) => value.slice(0, width),
+    visibleWidth: value => value.length,
+    // Extended key protocols: Escape arrives as a CSI-u sequence, never a bare ESC.
+    matchesKey: (data, id) => id === 'escape' && (data === '\x1b' || data === '\x1b[27u'),
+  }), ...options });
   return { pi, calls, notices, widgets, ctx, original, commands, overlays, overlayRenders, component: () => component, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
 }
 
@@ -467,4 +478,12 @@ test('shutdown suppresses late notifications and ignores subsequent tool results
   assert.equal(stopped, 1);
   await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
   assert.equal(f.notices.length, 0);
+});
+
+test('setup overlay cancels with an extended Escape sequence and saves nothing', async () => {
+  const f = fixture({ overlay: { keys: ['\x1b[27u'] } });
+  await f.commands.get('canvas-lan:setup').handler('', f.ctx);
+  assert.match(f.notices.at(-1)[0], /cancelled; nothing changed/);
+  assert.equal(f.calls.includes('construct'), false);
+  await f.emit('session_shutdown');
 });

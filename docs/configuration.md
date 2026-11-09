@@ -44,7 +44,15 @@ The configuration helper does not read or trust forwarded request headers.
 geometry as the Gentle Shell usage window (a fixed `64`-column card, modal
 minimum `44` columns, anchored in the middle) — with one field per setting: host, port and optional
 public origin. `tab` or the arrow keys move between fields, `enter` validates
-and saves, and `esc` closes it without touching the file. A rejected value is
+and saves, and `esc` closes it without touching the file. The hint row at the
+bottom (`enter save`, `tab next`, `esc cancel`) is clickable: a left click on
+the `key label` group runs that action, and the hovered group is repainted with
+the shell's shared hover role (`warning`), the same single role swap every other
+clickable surface uses. Plain pointer moves never arrive under tmux, zellij or
+screen, so there the hints stay click-only. Keys are resolved through the host
+matcher when it is available and through a local decoder otherwise, so `esc`
+also works on terminals that report extended key sequences (kitty `\x1b[27u`,
+modifyOtherKeys `\x1b[27;1;27~`) instead of a bare `\x1b`. A rejected value is
 reported inside the modal and the form stays open, so the previous settings
 remain active. Narrow terminals below 30 columns fall back to a frameless
 compact list; hosts without TUI overlay support get the sequential prompts
