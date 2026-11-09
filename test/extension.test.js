@@ -15,13 +15,20 @@ function fixture(options = {}) {
   const calls = [];
   const widgets = new Map();
   let running = false;
-  const state = () => ({ running, lanUrl: running ? 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/' : null });
+  let canvas = true;
+  const state = () => ({ running, lanUrl: running && canvas ? 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/' : null });
   const controller = {
     status: state,
     async start() { calls.push('start'); running = true; return state(); },
     async stop() { calls.push('stop'); running = false; return state(); },
-    async openCanvas(value) { calls.push(['open', value]); running = true; return state(); },
-    clearCanvas() { calls.push('clear'); },
+    async openCanvas(value) { calls.push(['open', value]); running = true; canvas = true; return state(); },
+    async checkCanvas() {
+      calls.push('probe');
+      if (typeof options.canvasAlive === 'function') canvas = options.canvasAlive();
+      else if (options.canvasAlive === false) canvas = false;
+      return canvas;
+    },
+    clearCanvas() { calls.push('clear'); canvas = false; },
     async shutdown() { calls.push('shutdown'); running = false; },
   };
   const pi = { on: (event, fn) => handlers.set(event, fn), registerCommand: (name, spec) => commands.set(name, spec) };
@@ -122,6 +129,28 @@ test('status reports effective host and port with their source', async t => {
   await unset.commands.get('canvas-lan:status').handler('', unset.ctx);
   assert.match(unset.notices.at(-1)[0], /not configured/);
   await unset.emit('session_shutdown');
+});
+
+test('status retires a stale card instead of advertising a dead canvas', async () => {
+  const f = fixture({ canvasAlive: false });
+  await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
+  assert.equal(f.widgets.size, 1);
+  await f.commands.get('canvas-lan:status').handler('', f.ctx);
+  assert.equal(f.widgets.size, 0);
+  const readout = f.notices.at(-1)[0];
+  assert.match(readout, /Canvas LAN proxy running\. Open a design to get its URL\./);
+  assert.doesNotMatch(readout, /abcdefghijklmnop|\/s\//, 'no dead canvas link survives');
+  await f.emit('session_shutdown');
+});
+
+test('start does not advertise a link while no design canvas is running', async () => {
+  const f = fixture({ canvasAlive: false });
+  await f.commands.get('canvas-lan:start').handler('', f.ctx);
+  assert.equal(f.notices.at(-1)[1], 'info');
+  assert.match(f.notices.at(-1)[0], /Canvas LAN proxy running\. Open a design to get its URL\./);
+  assert.doesNotMatch(f.notices.at(-1)[0], /http:\/\//);
+  assert.equal(f.widgets.size, 0);
+  await f.emit('session_shutdown');
 });
 
 test('setup menu persists host and port and rebuilds the controller', async t => {

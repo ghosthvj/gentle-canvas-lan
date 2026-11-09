@@ -122,6 +122,12 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     await ensureSettings();
     return controller ??= makeController({ config: effectiveConfig() });
   };
+  // A registered canvas is not a running canvas: probe before advertising a link.
+  const liveState = async instance => {
+    if (typeof instance.checkCanvas !== 'function') return instance.status();
+    await instance.checkCanvas();
+    return instance.status();
+  };
   const notify = (ctx, text, level = 'info') => {
     if (!closed && ctx.hasUI) ctx.ui.notify(text, level);
   };
@@ -205,7 +211,9 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       + (overrides.length ? ` Environment overrides active for: ${overrides.join(', ')}.` : ''));
   };
   command('canvas-lan:start', 'Start the LAN design-canvas proxy', async ctx => {
-    report(ctx, await (await getController()).start());
+    const instance = await getController();
+    await instance.start();
+    report(ctx, await liveState(instance));
   });
   command('canvas-lan:status', 'Show LAN design-canvas proxy status', async ctx => {
     await ensureSettings();
@@ -224,7 +232,8 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
         lines.push(`Canvas LAN origin: ${config.publicOrigin} (${source('GENTLE_CANVAS_LAN_PUBLIC_ORIGIN', 'publicOrigin')})`);
       }
     }
-    const state = controller?.status() ?? { running: false };
+    const state = controller ? await liveState(controller) : { running: false };
+    if (controller) report(ctx, state, false);
     lines.push(state.running
       ? state.lanUrl ? `Canvas LAN: ${state.lanUrl}` : 'Canvas LAN proxy running. Open a design to get its URL.'
       : 'Canvas LAN proxy is not running. Use /canvas-lan:start to enable it.');

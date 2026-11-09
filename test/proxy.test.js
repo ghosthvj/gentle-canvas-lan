@@ -73,12 +73,17 @@ async function fixture(t) {
   return { proxy, upstream, origin, seen, request, mutations: () => mutations };
 }
 
-const errors = { 421: 'Misdirected Request\n', 404: 'Not Found\n', 403: 'Forbidden\n', 502: 'Bad Gateway\n' };
+const errors = { 421: 'Misdirected Request\n', 404: 'Not Found\n', 403: 'Forbidden\n' };
+const canvasDown = /Gentle Design canvas is not running/;
 async function rejected(f, path, options, status) {
   const before = [f.seen.length, f.mutations()];
   const response = await f.request(path, options);
   assert.equal(response.status, status);
-  assert.equal(response.body, options.method === 'HEAD' ? '' : errors[status]);
+  if (options.method === 'HEAD') assert.equal(response.body, '');
+  else if (status === 502) {
+    assert.match(response.body, canvasDown);
+    assert.match(response.headers['content-type'], /^text\/html/);
+  } else assert.equal(response.body, errors[status]);
   assert.deepEqual([f.seen.length, f.mutations()], before);
 }
 
@@ -275,7 +280,7 @@ test('missing/unreachable target, bounded headers and aborted response are conta
   f.proxy.setTarget({ origin: f.origin, token });
   const hung = await f.request(`/${token}/hang`);
   assert.equal(hung.status, 502);
-  assert.equal(hung.body, errors[502]);
+  assert.match(hung.body, canvasDown);
   const s = await stream(f, 'abort');
   assert.equal(s.chunk, 'partial');
   await new Promise(resolve => s.res.once('close', resolve));
