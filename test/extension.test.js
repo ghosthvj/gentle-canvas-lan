@@ -15,13 +15,20 @@ function fixture(options = {}) {
   const calls = [];
   const widgets = new Map();
   let running = false;
-  const state = () => ({ running, lanUrl: running ? 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/' : null });
+  let canvas = true;
+  const state = () => ({ running, lanUrl: running && canvas ? 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/' : null });
   const controller = {
     status: state,
     async start() { calls.push('start'); running = true; return state(); },
     async stop() { calls.push('stop'); running = false; return state(); },
-    async openCanvas(value) { calls.push(['open', value]); running = true; return state(); },
-    clearCanvas() { calls.push('clear'); },
+    async openCanvas(value) { calls.push(['open', value]); running = true; canvas = true; return state(); },
+    async checkCanvas() {
+      calls.push('probe');
+      if (typeof options.canvasAlive === 'function') canvas = options.canvasAlive();
+      else if (options.canvasAlive === false) canvas = false;
+      return canvas;
+    },
+    clearCanvas() { calls.push('clear'); canvas = false; },
     async shutdown() { calls.push('shutdown'); running = false; },
   };
   const pi = { on: (event, fn) => handlers.set(event, fn), registerCommand: (name, spec) => commands.set(name, spec) };
@@ -35,8 +42,14 @@ function fixture(options = {}) {
       async custom(factory, overlayOptions) {
         overlays.push(overlayOptions);
         let finish;
-        const result = new Promise(done => { finish = done; });
-        const component = factory({ requestRender() {} }, theme, {}, value => finish(value));
+        // A driven overlay must finish: without this guard a stuck panel would
+        // hang the whole file instead of failing one test.
+        const result = new Promise((resolve, reject) => {
+          const guard = setTimeout(() => reject(new Error('setup overlay never finished')), 200);
+          guard.unref();
+          finish = value => { clearTimeout(guard); resolve(value); };
+        });
+        const component = await factory({ requestRender() {} }, theme, {}, value => finish(value));
         for (const key of options.overlay.keys) {
           component.handleInput(key);
           overlayRenders.push(component.render(60).join('\n'));
@@ -56,7 +69,12 @@ function fixture(options = {}) {
   };
   const original = ui.notify;
   const ctx = { hasUI: true, ui, ...(options.tuiMode ? { mode: 'tui' } : {}) };
-  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, settingsPath: options.settingsPath ?? '/nonexistent/gentle-canvas-lan/config.json', makeController: (opts) => { calls.push('construct'); calls.push(opts?.config); return controller; }, loadUi: async () => ({ truncateToWidth: (value, width) => value.slice(0, width), visibleWidth: value => value.length }), ...options });
+  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, settingsPath: options.settingsPath ?? '/nonexistent/gentle-canvas-lan/config.json', makeController: (opts) => { calls.push('construct'); calls.push(opts?.config); return controller; }, loadUi: async () => ({
+    truncateToWidth: (value, width) => value.slice(0, width),
+    visibleWidth: value => value.length,
+    // Extended key protocols: Escape arrives as a CSI-u sequence, never a bare ESC.
+    matchesKey: (data, id) => id === 'escape' && (data === '\x1b' || data === '\x1b[27u'),
+  }), ...options });
   return { pi, calls, notices, widgets, ctx, original, commands, overlays, overlayRenders, component: () => component, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
 }
 
@@ -122,6 +140,28 @@ test('status reports effective host and port with their source', async t => {
   await unset.commands.get('canvas-lan:status').handler('', unset.ctx);
   assert.match(unset.notices.at(-1)[0], /not configured/);
   await unset.emit('session_shutdown');
+});
+
+test('status retires a stale card instead of advertising a dead canvas', async () => {
+  const f = fixture({ canvasAlive: false });
+  await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
+  assert.equal(f.widgets.size, 1);
+  await f.commands.get('canvas-lan:status').handler('', f.ctx);
+  assert.equal(f.widgets.size, 0);
+  const readout = f.notices.at(-1)[0];
+  assert.match(readout, /Canvas LAN proxy running\. Open a design to get its URL\./);
+  assert.doesNotMatch(readout, /abcdefghijklmnop|\/s\//, 'no dead canvas link survives');
+  await f.emit('session_shutdown');
+});
+
+test('start does not advertise a link while no design canvas is running', async () => {
+  const f = fixture({ canvasAlive: false });
+  await f.commands.get('canvas-lan:start').handler('', f.ctx);
+  assert.equal(f.notices.at(-1)[1], 'info');
+  assert.match(f.notices.at(-1)[0], /Canvas LAN proxy running\. Open a design to get its URL\./);
+  assert.doesNotMatch(f.notices.at(-1)[0], /http:\/\//);
+  assert.equal(f.widgets.size, 0);
+  await f.emit('session_shutdown');
 });
 
 test('setup menu persists host and port and rebuilds the controller', async t => {
@@ -438,4 +478,12 @@ test('shutdown suppresses late notifications and ignores subsequent tool results
   assert.equal(stopped, 1);
   await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
   assert.equal(f.notices.length, 0);
+});
+
+test('setup overlay cancels with an extended Escape sequence and saves nothing', async () => {
+  const f = fixture({ overlay: { keys: ['\x1b[27u'] } });
+  await f.commands.get('canvas-lan:setup').handler('', f.ctx);
+  assert.match(f.notices.at(-1)[0], /cancelled; nothing changed/);
+  assert.equal(f.calls.includes('construct'), false);
+  await f.emit('session_shutdown');
 });

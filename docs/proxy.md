@@ -35,13 +35,17 @@ idempotent; it retains registration for a later explicit start.
 | Check | Policy | Failure |
 | --- | --- | --- |
 | Host | Exact `new URL(publicOrigin).host` | 421 `Misdirected Request` |
-| Registration | Current trusted target required | 502 `Bad Gateway` |
+| Registration | Current trusted target required | 502 explained page |
 | Path | Raw first segment equals token; no absolute form, traversal or backslash tricks | 404 `Not Found` |
 | Origin | Exact public origin, except the reads below | 403 `Forbidden` |
-| Upstream | Connect and receive response headers within five seconds | 502 `Bad Gateway` |
+| Upstream | Connect and receive response headers within five seconds | 502 explained page |
 
 Error bodies are the table text followed by one newline, with no request or
-target details. HEAD responses have no body. Checks execute in table order.
+target details. The exception is `502`: the LAN port stays reserved while the
+local canvas is gone, so a browser following an old link gets a short
+`text/html` page explaining that the canvas stopped answering and how to bring
+it back, instead of a bare `Bad Gateway`. HEAD responses have no body. Checks
+execute in table order.
 Only GET may omit Origin. GET with `Origin: null` is allowed only for remainder
 `files/...`, `system.html` or `assets/inspector.js`; null is preserved upstream.
 All other allowed requests require the exact public origin, rewritten to the

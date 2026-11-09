@@ -24,7 +24,7 @@ function fakeTheme() {
   };
 }
 
-function fixture({ values, validate, initial = { host: '192.168.1.20', port: '34316', publicOrigin: '' } } = {}) {
+function fixture({ values, validate, matchesKey, initial = { host: '192.168.1.20', port: '34316', publicOrigin: '' } } = {}) {
   const submitted = [];
   const cancelled = [];
   const theme = fakeTheme();
@@ -33,11 +33,22 @@ function fixture({ values, validate, initial = { host: '192.168.1.20', port: '34
     theme,
     values: { ...initial, ...values },
     validate: validate ?? (() => null),
+    matchesKey,
     submit: next => submitted.push(next),
     cancel: () => cancelled.push(true),
     requestRender: () => { renders++; },
   });
   return { panel, submitted, cancelled, theme, renders: () => renders };
+}
+
+// Click the visible label of a hint, using its rendered row and columns.
+function clickLabel(panel, width, label, type = 'click') {
+  const rows = plainRows(panel, width);
+  const row = rows.findIndex(line => line.includes('enter save'));
+  assert.ok(row >= 0, 'hint row is rendered');
+  const x = rows[row].indexOf(label);
+  assert.ok(x > 0, `"${label}" appears in the hint row`);
+  return panel.handleMouse({ type, button: 'left', x: x + 1, y: row, width, height: rows.length });
 }
 
 test('renders a framed form with title, labels and current values', () => {
@@ -234,4 +245,119 @@ test('invalidate is a no-op and rendering is repeatable', () => {
   assert.deepEqual(panel.render(24), panel.render(24));
   panel.invalidate();
   assert.deepEqual(panel.render(60), rows);
+});
+
+test('escape cancels even when the terminal reports an extended key sequence', () => {
+  const f = fixture({ matchesKey: (data, id) => id === 'escape' && data === '\x1b[27u' });
+  f.panel.render(60);
+  f.panel.handleInput('\x1b[27u'); // kitty keyboard protocol
+  assert.deepEqual(f.cancelled, [true]);
+  assert.deepEqual(f.submitted, []);
+  // A closed panel ignores later keys entirely.
+  f.panel.handleInput('\r');
+  assert.deepEqual(f.submitted, []);
+});
+
+test('hint labels respond to left clicks: save, next and cancel', () => {
+  const saved = fixture();
+  saved.panel.render(60);
+  assert.deepEqual(clickLabel(saved.panel, 60, 'save', 'press'), { handled: true, focus: true });
+  assert.deepEqual(saved.submitted, [], 'a press only arms the target');
+  assert.deepEqual(clickLabel(saved.panel, 60, 'save'), { handled: true });
+  assert.deepEqual(saved.submitted, [{ host: '192.168.1.20', port: '34316', publicOrigin: '' }]);
+
+  const next = fixture();
+  next.panel.render(60);
+  clickLabel(next.panel, 60, 'next');
+  assert.ok(focusOn(next.panel, 60, 'Port'), 'next advances the focused field');
+
+  const cancel = fixture();
+  cancel.panel.render(60);
+  clickLabel(cancel.panel, 60, 'cancel');
+  assert.deepEqual(cancel.cancelled, [true]);
+  assert.deepEqual(cancel.submitted, []);
+});
+
+test('clicks outside the hints and other buttons are ignored', () => {
+  const f = fixture();
+  const rows = plainRows(f.panel, 60);
+  const hintRow = rows.findIndex(line => line.includes('enter save'));
+  for (const event of [
+    { type: 'click', button: 'left', x: 3, y: 1 },
+    { type: 'click', button: 'left', x: 3, y: hintRow + 1 },
+    { type: 'click', button: 'right', x: 4, y: hintRow },
+    { type: 'press', button: 'right', x: 4, y: hintRow },
+  ]) {
+    assert.equal(f.panel.handleMouse({ ...event, width: 60, height: rows.length }), undefined);
+  }
+  assert.deepEqual(f.submitted, []);
+  assert.deepEqual(f.cancelled, []);
+});
+
+test('compact rows keep their hint keys clickable', () => {
+  const f = fixture();
+  const rows = plainRows(f.panel, 24);
+  const row = rows.findIndex(line => line.includes('enter · tab · esc'));
+  assert.ok(row >= 0);
+  const x = rows[row].indexOf('esc');
+  assert.deepEqual(f.panel.handleMouse({ type: 'click', button: 'left', x, y: row, width: 24, height: rows.length }), { handled: true });
+  assert.deepEqual(f.cancelled, [true]);
+});
+
+test('extended key encodings work without any host matcher', () => {
+  const cases = [
+    ['\x1b[27u', 'cancelled'],
+    ['\x1b[27;1:3u', 'cancelled'],
+    ['\x1b[27;1;27~', 'cancelled'],
+  ];
+  for (const [data, expected] of cases) {
+    const f = fixture();
+    f.panel.render(60);
+    f.panel.handleInput(data);
+    assert.equal(f.cancelled.length, 1, `${JSON.stringify(data)} cancels`);
+    assert.equal(f.submitted.length, 0, `${JSON.stringify(data)} never submits`);
+    assert.equal(expected, 'cancelled');
+  }
+  const save = fixture();
+  save.panel.render(60);
+  save.panel.handleInput('\x1b[13u'); // kitty enter
+  assert.deepEqual(save.submitted, [{ host: '192.168.1.20', port: '34316', publicOrigin: '' }]);
+  const next = fixture();
+  next.panel.render(60);
+  next.panel.handleInput('\x1b[9u'); // kitty tab
+  assert.ok(focusOn(next.panel, 60, 'Port'));
+});
+
+test('hovering a hint paints it with the shell hover role and moving away clears it', () => {
+  const f = fixture();
+  const rows = plainRows(f.panel, 60);
+  const row = rows.findIndex(line => line.includes('enter save'));
+  const x = rows[row].indexOf('cancel') + 1;
+  assert.deepEqual(f.panel.handleMouse({ type: 'move', x, y: row, width: 60, height: rows.length }), { handled: true, render: true });
+  f.panel.render(60);
+  assert.ok(f.theme.paints.some(([role, text]) => role === 'warning' && text.includes('cancel')));
+  // Moving off the hint row clears the hover paint again.
+  assert.deepEqual(f.panel.handleMouse({ type: 'move', x: 2, y: 1, width: 60, height: rows.length }), { handled: true, render: true });
+  f.theme.paints.length = 0;
+  f.panel.render(60);
+  assert.equal(f.theme.paints.some(([role]) => role === 'warning'), false);
+});
+
+test('a long validation error keeps every frame row inside the requested width', () => {
+  const long = 'A deliberately long validation message that cannot fit inside the modal frame without clipping.';
+  for (const width of [64, 60, 44, 30]) {
+    const f = fixture({ validate: () => long });
+    f.panel.handleInput('\r');
+    const rows = plainRows(f.panel, width);
+    for (const [index, row] of rows.entries()) {
+      assert.equal([...row].length, width, `row ${index} at width ${width} is exactly ${width} columns`);
+      assert.equal(visibleWidth(row), width, `row ${index} at width ${width} measures ${width}`);
+    }
+    if (width >= 30) {
+      assert.ok(rows[0].startsWith('╭'), 'frame opens');
+      assert.ok(rows.at(-1).startsWith('╰'), 'frame closes');
+      for (const row of rows) assert.match(row[0], /[╭│╰]/, 'every row keeps its left border');
+      for (const row of rows) assert.match(row.at(-1), /[╮│╯]/, 'every row keeps its right border');
+    }
+  }
 });

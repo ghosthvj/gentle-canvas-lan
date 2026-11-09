@@ -1,6 +1,19 @@
 import http from 'node:http';
 
-const errors = { 421: 'Misdirected Request\n', 404: 'Not Found\n', 403: 'Forbidden\n', 502: 'Bad Gateway\n' };
+const errors = { 421: 'Misdirected Request\n', 404: 'Not Found\n', 403: 'Forbidden\n' };
+// The LAN port stays reserved while the local canvas is gone, so a browser that
+// follows an old link deserves an explanation instead of a bare "Bad Gateway".
+const canvasDownPage = `<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gentle Design canvas is not running</title>
+<style>body{font:16px/1.6 system-ui,-apple-system,sans-serif;margin:3rem auto;max-width:34rem;padding:0 1.5rem;color:#1f2328}h1{font-size:1.25rem;margin:0 0 .75rem}p{color:#57606a;margin:0 0 1rem}code{background:#f6f8fa;padding:.1rem .3rem;border-radius:.25rem;font-size:.9em}</style>
+<h1>Gentle Design canvas is not running</h1>
+<p>This LAN address is still reserved, but the local canvas stopped answering.</p>
+<p>Open a design in Pi so the canvas starts again, then reload this page. Run <code>/canvas-lan:status</code> to see the current link.</p>
+</html>
+`;
 const hopHeaders = new Set([
   'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
   'te', 'trailer', 'transfer-encoding', 'upgrade', 'proxy-connection',
@@ -79,8 +92,14 @@ export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
     const fail = status => {
       if (res.destroyed) return;
       if (res.headersSent) { res.destroy(); return; }
-      res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(errors[status]);
+      const body = status === 502 ? canvasDownPage : errors[status];
+      res.writeHead(status, {
+        'content-type': status === 502 ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8',
+        'cache-control': 'no-store',
+        // Only the explained page declares a length; other error paths stay byte-identical.
+        ...(status === 502 ? { 'content-length': Buffer.byteLength(body) } : {}),
+      });
+      res.end(body);
       req.resume();
     };
     if (req.headers.host !== external.host) return fail(421);

@@ -12,7 +12,13 @@ The injected proxy factory is for deterministic lifecycle tests; production uses
   leaves the previous target unchanged. The selected design path and query are
   retained in the reported LAN URL.
 - `start()`: explicitly enable the listener and return its current state. An
-  upstream is optional; requests without one receive the proxy's 502 response.
+  upstream is optional; requests without a live one receive the proxy's
+  explained 502 page. Callers must not advertise a link from this state alone:
+  use `checkCanvas()` first.
+- `checkCanvas()`: probe the registered canvas once (injectable `probeCanvas`,
+  any HTTP answer counts) and, when it no longer answers, revoke the
+  registration and clear the proxy target so no stale link stays advertised.
+  Returns a boolean; idempotent and safe to call before `status()`.
 - `status()`: return `{running, enabled, port, localUrl, lanUrl, shortUrl}` where `shortUrl` is a stable per-session `/s/<16-hex>` capability that redirects to the current canvas. Addresses are
   capability URLs; do not persist this object in request logs.
 - `clearCanvas()`: revoke the registration and close stale upstream streams,

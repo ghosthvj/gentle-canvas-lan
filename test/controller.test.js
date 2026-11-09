@@ -41,6 +41,28 @@ test('register starts lazily; rotates target and preserves selected path on fixe
   await c.shutdown();
 });
 
+test('checkCanvas keeps a live registration and clears a dead one', async () => {
+  const f = fake();
+  const probed = [];
+  const c = createController({
+    config,
+    createProxy: f.createProxy,
+    probeCanvas: async url => { probed.push(url); return probed.length === 1; },
+  });
+  assert.equal(await c.checkCanvas(), false, 'nothing registered to probe');
+  assert.deepEqual(probed, []);
+  await c.openCanvas(url);
+  assert.equal(await c.checkCanvas(), true);
+  assert.equal(c.status().lanUrl, `http://canvas.test:34316/${token}/d/demo/?view=1`);
+  assert.equal(await c.checkCanvas(), false);
+  assert.equal(c.status().localUrl, null);
+  assert.equal(c.status().lanUrl, null);
+  assert.equal(f.calls.targets.at(-1), null, 'the proxy stops forwarding to the dead canvas');
+  assert.equal(probed.length, 2);
+  assert.match(probed[0], /^http:\/\/127\.0\.0\.1:40123\//);
+  await c.shutdown();
+});
+
 test('explicit stop disables automatic start until explicit start; shutdown is terminal', async () => {
   const f = fake();
   const c = createController({ config, createProxy: f.createProxy });

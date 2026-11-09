@@ -122,6 +122,12 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     await ensureSettings();
     return controller ??= makeController({ config: effectiveConfig() });
   };
+  // A registered canvas is not a running canvas: probe before advertising a link.
+  const liveState = async instance => {
+    if (typeof instance.checkCanvas !== 'function') return instance.status();
+    await instance.checkCanvas();
+    return instance.status();
+  };
   const notify = (ctx, text, level = 'info') => {
     if (!closed && ctx.hasUI) ctx.ui.notify(text, level);
   };
@@ -205,7 +211,9 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       + (overrides.length ? ` Environment overrides active for: ${overrides.join(', ')}.` : ''));
   };
   command('canvas-lan:start', 'Start the LAN design-canvas proxy', async ctx => {
-    report(ctx, await (await getController()).start());
+    const instance = await getController();
+    await instance.start();
+    report(ctx, await liveState(instance));
   });
   command('canvas-lan:status', 'Show LAN design-canvas proxy status', async ctx => {
     await ensureSettings();
@@ -224,7 +232,8 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
         lines.push(`Canvas LAN origin: ${config.publicOrigin} (${source('GENTLE_CANVAS_LAN_PUBLIC_ORIGIN', 'publicOrigin')})`);
       }
     }
-    const state = controller?.status() ?? { running: false };
+    const state = controller ? await liveState(controller) : { running: false };
+    if (controller) report(ctx, state, false);
     lines.push(state.running
       ? state.lanUrl ? `Canvas LAN: ${state.lanUrl}` : 'Canvas LAN proxy running. Open a design to get its URL.'
       : 'Canvas LAN proxy is not running. Use /canvas-lan:start to enable it.');
@@ -248,21 +257,28 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       return saveSetup(ctx, await promptFields(ctx, current));
     }
     // The modal validates inline, so a rejected value never closes the form.
-    const values = await ctx.ui.custom((tui, theme, _keybindings, done) => createSetupPanel({
-      theme,
-      values: current,
-      validate: candidate => {
-        try {
-          validateSettings(candidate);
-          return null;
-        } catch (error) {
-          return error instanceof TypeError ? error.message : 'Invalid settings.';
-        }
-      },
-      submit: next => done(next),
-      cancel: () => done(undefined),
-      requestRender: () => tui.requestRender(),
-    }), SETUP_OVERLAY);
+    const values = await ctx.ui.custom(async (tui, theme, _keybindings, done) => {
+      // Extended key protocols deliver Escape as \x1b[27u; only the host's
+      // matcher knows every encoding, so pass it in when it is available.
+      let matchesKey;
+      try { matchesKey = (await (uiTools ??= loadUi()))?.matchesKey; } catch { matchesKey = undefined; }
+      return createSetupPanel({
+        theme,
+        values: current,
+        matchesKey,
+        validate: candidate => {
+          try {
+            validateSettings(candidate);
+            return null;
+          } catch (error) {
+            return error instanceof TypeError ? error.message : 'Invalid settings.';
+          }
+        },
+        submit: next => done(next),
+        cancel: () => done(undefined),
+        requestRender: () => tui.requestRender(),
+      });
+    }, SETUP_OVERLAY);
     await saveSetup(ctx, values);
   });
   pi.on('tool_result', async (event, ctx) => {
