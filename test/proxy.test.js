@@ -39,7 +39,11 @@ async function fixture(t) {
       return;
     }
     let body = '';
-    for await (const chunk of req) body += chunk;
+    try {
+      for await (const chunk of req) body += chunk;
+    } catch {
+      return; // Aborted by the proxy (e.g. body cap): no mutation is counted.
+    }
     if (req.method === 'POST') mutations++;
     res.writeHead(201, {
       'content-type': 'application/json',
@@ -163,6 +167,23 @@ test('strips unsafe headers and changes only eligible CSP directive', async t =>
     `default-src ${f.origin}; frame-ancestors 'self' ${f.origin} ${publicOrigin}; img-src ${f.origin}`);
   assert.equal((await f.request(`/${token}/page`)).headers['content-security-policy'],
     "default-src 'self'; frame-ancestors 'none'");
+});
+
+test('request bodies larger than the cap are rejected without upstream effects', async t => {
+  const f = await fixture(t);
+  const big = 'x'.repeat(60 * 1024 * 1024);
+  const before = [f.seen.length, f.mutations()];
+  const response = await f.request(`/${token}/comments`, {
+    method: 'POST', headers: { origin: publicOrigin, 'content-type': 'text/plain' }, body: big,
+  });
+  assert.equal(response.status, 413);
+  assert.equal(response.body, 'Payload Too Large\n');
+  assert.deepEqual([f.seen.length, f.mutations()], before, 'declared oversize body never reaches upstream');
+  // Legitimate bodies below the cap still forward.
+  const ok = await f.request(`/${token}/comments`, {
+    method: 'POST', headers: { origin: publicOrigin, 'content-type': 'text/plain' }, body: 'small',
+  });
+  assert.equal(ok.status, 201);
 });
 
 function stream(f, remainder = 'events') {

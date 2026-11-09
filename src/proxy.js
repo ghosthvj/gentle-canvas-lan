@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 
-const errors = { 421: 'Misdirected Request\n', 404: 'Not Found\n', 403: 'Forbidden\n' };
+const errors = { 421: 'Misdirected Request\n', 404: 'Not Found\n', 403: 'Forbidden\n', 413: 'Payload Too Large\n' };
 // The LAN port stays reserved while the local canvas is gone, so a browser that
 // follows an old link deserves an explanation instead of a bare "Bad Gateway".
 const canvasDownPage = `<!doctype html>
@@ -90,10 +90,11 @@ function extendCsp(value, origin, publicOrigin) {
 }
 
 /** Explicit endpoint only: registration and lifecycle serialization belong to the controller. */
-export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
+export function createCanvasProxy({ host, port, publicOrigin, shortCode, maxBodyBytes = 50 * 1024 * 1024 }) {
   if (typeof host !== 'string' || !host.trim() || !Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error('Invalid proxy endpoint');
   }
+  if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 1) throw new Error('Invalid proxy endpoint');
   const external = new URL(publicOrigin);
   if (!['http:', 'https:'].includes(external.protocol) || external.origin !== publicOrigin) {
     throw new Error('Invalid public origin');
@@ -134,6 +135,9 @@ export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
       remainder === 'system.html' || remainder === 'assets/inspector.js');
     if (!(origin === publicOrigin || (origin === undefined && req.method === 'GET') ||
         (origin === 'null' && nullRead))) return fail(403);
+    // A declared body over the cap is rejected before any upstream connection.
+    const declared = Number.parseInt(req.headers['content-length'] ?? '', 10);
+    if (Number.isInteger(declared) && declared > maxBodyBytes) return fail(413);
 
     const headers = cleanHeaders(req.headers);
     headers.host = new URL(current.origin).host;
@@ -176,6 +180,22 @@ export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
       }
       res.writeHead(incoming.statusCode, outgoing);
       incoming.pipe(res);
+      res.on('finish', () => {
+        // The response is complete; a client body still arriving then only
+        // holds the upstream request open, so stop forwarding it. Open-ended
+        // responses (SSE) never finish and keep streaming as before.
+        if (!req.readableEnded) req.destroy();
+      });
+    });
+    // Undeclared (chunked) bodies are counted while forwarding and cut at the cap.
+    let forwarded = 0;
+    req.on('data', chunk => {
+      forwarded += chunk.length;
+      if (forwarded > maxBodyBytes) {
+        upstream.destroy();
+        clearTimeout(timer);
+        fail(413);
+      }
     });
     req.pipe(upstream);
   });

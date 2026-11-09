@@ -38,6 +38,18 @@ for (const host of [undefined, '', 'localhost', '0.0.0.0', '::', '0:0:0:0:0:0:0:
   });
 }
 
+test('optional body cap overrides the proxy default', () => {
+  const config = readConfig({ ...env, GENTLE_CANVAS_LAN_MAX_BODY_BYTES: '1048576' });
+  assert.equal(config.maxBodyBytes, 1048576);
+  assert.equal('maxBodyBytes' in readConfig(env), false, 'unset keeps the proxy default');
+});
+
+for (const cap of ['0', '-5', '2147483648', '1.5', 'abc', '']) {
+  test(`reject body cap ${String(cap)}`, () => {
+    rejectsWithoutReplacing(() => readConfig({ ...env, GENTLE_CANVAS_LAN_MAX_BODY_BYTES: cap }));
+  });
+}
+
 for (const port of ['1', '80', '65535', '34316']) {
   test(`explicit port ${port}`, () => {
     const config = readConfig({ ...env, GENTLE_CANVAS_LAN_PORT: port });
