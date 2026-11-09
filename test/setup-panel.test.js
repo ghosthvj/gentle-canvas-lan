@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSetupPanel } from '../src/setup-panel.js';
+import { validateSettings } from '../src/settings.js';
 import { visibleWidth } from '../src/text-fit.js';
 
 // Styled rows are measured with the real text-fit module; assertions read the
@@ -24,7 +25,7 @@ function fakeTheme() {
   };
 }
 
-function fixture({ values, validate, matchesKey, initial = { host: '192.168.1.20', port: '34316', publicOrigin: '' } } = {}) {
+function fixture({ values, validate, matchesKey, initial = { ip: '192.168.1.20', port: '34316', publicOrigin: '' } } = {}) {
   const submitted = [];
   const cancelled = [];
   const theme = fakeTheme();
@@ -63,7 +64,7 @@ test('renders a framed form with title, labels and current values', () => {
     assert.equal(plain.at(-1).endsWith('╯'), true);
     assert.ok(rows.every(row => visibleWidth(row) === width));
     const body = plain.join('\n');
-    assert.match(body, /▸ Host \/ IP to bind/);
+    assert.match(body, /▸ IP to bind/);
     assert.match(body, /Port/);
     assert.match(body, /Public origin/);
     assert.match(body, /192\.168\.1\.20/);
@@ -81,21 +82,21 @@ test('focus starts on the host, tab and arrows move it, and typing appends at th
   const { panel, submitted, renders } = fixture();
   // The caret starts at the end of each prefilled value.
   assert.match(caretRow(panel, 60), /192\.168\.1\.20▏/);
-  assert.equal(focusOn(panel, 60, 'Host / IP to bind'), true);
+  assert.equal(focusOn(panel, 60, 'IP to bind'), true);
   assert.equal(focusOn(panel, 60, 'Port'), false);
   panel.handleInput('9');
   assert.match(caretRow(panel, 60), /192\.168\.1\.209▏/);
   panel.handleInput('\t');
   assert.equal(focusOn(panel, 60, 'Port'), true);
-  assert.equal(focusOn(panel, 60, 'Host / IP to bind'), false);
+  assert.equal(focusOn(panel, 60, 'IP to bind'), false);
   // Moving focus puts the caret at the end of the newly focused value.
   assert.match(caretRow(panel, 60), /34316▏/);
   panel.handleInput('\x1b[A');
-  assert.equal(focusOn(panel, 60, 'Host / IP to bind'), true);
+  assert.equal(focusOn(panel, 60, 'IP to bind'), true);
   panel.handleInput('\x1b[B');
   assert.equal(focusOn(panel, 60, 'Port'), true);
   panel.handleInput('\x1b[Z');
-  assert.equal(focusOn(panel, 60, 'Host / IP to bind'), true);
+  assert.equal(focusOn(panel, 60, 'IP to bind'), true);
   // Shift-tab from the first field wraps to the last one; it is empty, so the
   // focused row shows only the caret, not a value.
   panel.handleInput('\x1b[Z');
@@ -113,7 +114,7 @@ test('enter submits every field value once and the panel stops accepting input',
   panel.handleInput('\t');
   panel.handleInput('h');
   panel.handleInput('\r');
-  assert.deepEqual(submitted, [{ host: '192.168.1.20', port: '343169', publicOrigin: 'h' }]);
+  assert.deepEqual(submitted, [{ ip: '192.168.1.20', port: '343169', publicOrigin: 'h' }]);
   const closed = panel.render(60);
   panel.handleInput('\r');
   panel.handleInput('\t');
@@ -141,7 +142,7 @@ test('backspace, delete and caret moves edit the focused value in place', () => 
   panel.handleInput('\x05'); // end
   assert.match(caretRow(panel, 60), /431▏/);
   panel.handleInput('\r');
-  assert.deepEqual(submitted, [{ host: '192.168.1.20', port: '431', publicOrigin: '' }]);
+  assert.deepEqual(submitted, [{ ip: '192.168.1.20', port: '431', publicOrigin: '' }]);
 });
 
 test('multi-character paste inserts every character at the caret', () => {
@@ -156,7 +157,7 @@ test('multi-character paste inserts every character at the caret', () => {
   panel.handleInput('XY'); // multi-character insert in the middle
   assert.match(caretRow(panel, 60), /192\.168\.1\.20abXY▏c/);
   panel.handleInput('\r');
-  assert.deepEqual(submitted, [{ host: '192.168.1.20abXYc', port: '34316', publicOrigin: '' }]);
+  assert.deepEqual(submitted, [{ ip: '192.168.1.20abXYc', port: '34316', publicOrigin: '' }]);
 });
 
 test('invalid values keep the form open and show the error inside the frame', () => {
@@ -212,7 +213,7 @@ test('narrow terminals get a frameless fallback that still shows every field', (
   assert.equal(plain.some(row => /[│╭╮╰╯]/u.test(row)), false);
   assert.ok(rows.every(row => visibleWidth(row) <= 24));
   assert.match(plain[0], /Canvas LAN setup/);
-  assert.ok(plain.some(row => /Host \/ IP to bind:/.test(row)));
+  assert.ok(plain.some(row => /IP to bind:/.test(row)));
   assert.ok(plain.some(row => /Port: 34316/.test(row)));
   assert.ok(plain.some(row => /esc/.test(row)));
   // The fallback applies below 30 columns; the frame starts exactly at 30.
@@ -264,7 +265,7 @@ test('hint labels respond to left clicks: save, next and cancel', () => {
   assert.deepEqual(clickLabel(saved.panel, 60, 'save', 'press'), { handled: true, focus: true });
   assert.deepEqual(saved.submitted, [], 'a press only arms the target');
   assert.deepEqual(clickLabel(saved.panel, 60, 'save'), { handled: true });
-  assert.deepEqual(saved.submitted, [{ host: '192.168.1.20', port: '34316', publicOrigin: '' }]);
+  assert.deepEqual(saved.submitted, [{ ip: '192.168.1.20', port: '34316', publicOrigin: '' }]);
 
   const next = fixture();
   next.panel.render(60);
@@ -321,7 +322,7 @@ test('extended key encodings work without any host matcher', () => {
   const save = fixture();
   save.panel.render(60);
   save.panel.handleInput('\x1b[13u'); // kitty enter
-  assert.deepEqual(save.submitted, [{ host: '192.168.1.20', port: '34316', publicOrigin: '' }]);
+  assert.deepEqual(save.submitted, [{ ip: '192.168.1.20', port: '34316', publicOrigin: '' }]);
   const next = fixture();
   next.panel.render(60);
   next.panel.handleInput('\x1b[9u'); // kitty tab
@@ -358,6 +359,32 @@ test('a long validation error keeps every frame row inside the requested width',
       assert.ok(rows.at(-1).startsWith('╰'), 'frame closes');
       for (const row of rows) assert.match(row[0], /[╭│╰]/, 'every row keeps its left border');
       for (const row of rows) assert.match(row.at(-1), /[╮│╯]/, 'every row keeps its right border');
+    }
+  }
+});
+
+test('real validation messages fit the frame in full, without an ellipsis', async () => {
+  const cases = [
+    [{ ip: '', port: '8590' }, 'IP is required.'],
+    [{ ip: '198.51.100.10/24', port: '8590' }, 'IP must be a concrete unicast address.'],
+    [{ ip: '198.51.100.10', port: '8590-8' }, 'PORT must be an integer from 1 to 65535.'],
+    [{ ip: '198.51.100.10', port: '8590', publicOrigin: 'ftp://x' }, 'PUBLIC ORIGIN must be an HTTP or HTTPS origin.'],
+  ];
+  for (const width of [64, 60]) {
+    for (const [values, message] of cases) {
+      const f = fixture({
+        values,
+        initial: { ip: '198.51.100.10', port: '8590', publicOrigin: '' },
+        validate: candidate => {
+          try { validateSettings(candidate); return null; } catch (error) { return error.message; }
+        },
+      });
+      f.panel.handleInput('\r');
+      const rows = plainRows(f.panel, width);
+      const row = rows.find(line => line.includes('⚠'));
+      assert.ok(row, `${message} renders an error row at width ${width}`);
+      assert.ok(row.includes(message), `"${message}" is shown in full at width ${width}: ${row}`);
+      assert.equal(row.includes('…'), false, `"${message}" is not clipped at width ${width}`);
     }
   }
 });

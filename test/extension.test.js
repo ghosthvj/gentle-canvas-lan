@@ -4,6 +4,7 @@ import { installCanvasLan } from '../src/extension.js';
 
 const url = 'http://127.0.0.1:41234/abcdefghijklmnop/d/demo/';
 
+
 function fixture(options = {}) {
   const handlers = new Map();
   let component;
@@ -12,6 +13,8 @@ function fixture(options = {}) {
   const theme = { fg: (_role, value) => value, bold: value => value, underline: value => value };
   const commands = new Map();
   const notices = [];
+  const entries = [];
+  const renderers = new Map();
   const calls = [];
   const widgets = new Map();
   let running = false;
@@ -31,7 +34,12 @@ function fixture(options = {}) {
     clearCanvas() { calls.push('clear'); canvas = false; },
     async shutdown() { calls.push('shutdown'); running = false; },
   };
-  const pi = { on: (event, fn) => handlers.set(event, fn), registerCommand: (name, spec) => commands.set(name, spec) };
+  const pi = {
+    on: (event, fn) => handlers.set(event, fn),
+    registerCommand: (name, spec) => commands.set(name, spec),
+    registerEntryRenderer: (customType, renderer) => renderers.set(customType, renderer),
+    appendEntry: (customType, data) => entries.push({ type: 'custom', customType, data }),
+  };
   const inputs = [...(options.inputResponses ?? [])];
   const overlays = [];
   const overlayRenders = [];
@@ -69,13 +77,13 @@ function fixture(options = {}) {
   };
   const original = ui.notify;
   const ctx = { hasUI: true, ui, ...(options.tuiMode ? { mode: 'tui' } : {}) };
-  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, settingsPath: options.settingsPath ?? '/nonexistent/gentle-canvas-lan/config.json', makeController: (opts) => { calls.push('construct'); calls.push(opts?.config); return controller; }, loadUi: async () => ({
+  installCanvasLan(pi, { env: { GENTLE_CANVAS_LAN_IP: '192.168.1.20' }, settingsPath: options.settingsPath ?? '/nonexistent/gentle-canvas-lan/config.json', makeController: (opts) => { calls.push('construct'); calls.push(opts?.config); return controller; }, loadUi: async () => ({
     truncateToWidth: (value, width) => value.slice(0, width),
     visibleWidth: value => value.length,
     // Extended key protocols: Escape arrives as a CSI-u sequence, never a bare ESC.
     matchesKey: (data, id) => id === 'escape' && (data === '\x1b' || data === '\x1b[27u'),
   }), ...options });
-  return { pi, calls, notices, widgets, ctx, original, commands, overlays, overlayRenders, component: () => component, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
+  return { pi, calls, notices, widgets, entries, renderers, ctx, original, commands, overlays, overlayRenders, component: () => component, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
 }
 
 test('entry registers without opening resources; command help/status/start/stop', async () => {
@@ -83,6 +91,11 @@ test('entry registers without opening resources; command help/status/start/stop'
   assert.deepEqual(f.calls, []);
   await f.emit('session_start');
   assert.deepEqual([...f.commands.keys()].sort(), [
+    'canvas-lan:setup', 'canvas-lan:start', 'canvas-lan:status', 'canvas-lan:stop',
+  ]);
+  // The host lists commands in registration order, so pin the lifecycle order:
+  // configure first, then start, inspect and stop.
+  assert.deepEqual([...f.commands.keys()], [
     'canvas-lan:setup', 'canvas-lan:start', 'canvas-lan:status', 'canvas-lan:stop',
   ]);
   await f.commands.get('canvas-lan:status').handler('', f.ctx);
@@ -124,16 +137,16 @@ test('status reports effective host and port with their source', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'canvas-status-'));
   const settingsPath = join(dir, 'config.json');
   t.after(() => rm(dir, { recursive: true, force: true }));
-  await writeFile(settingsPath, JSON.stringify({ host: '192.168.1.30', port: '35000', publicOrigin: 'https://canvas.example' }));
+  await writeFile(settingsPath, JSON.stringify({ ip: '192.168.1.30', port: '35000', publicOrigin: 'https://canvas.example' }));
   const saved = fixture({ env: {}, settingsPath });
   await saved.commands.get('canvas-lan:status').handler('', saved.ctx);
-  assert.match(saved.notices.at(-1)[0], /Canvas LAN host: 192\.168\.1\.30 \(saved\)/);
+  assert.match(saved.notices.at(-1)[0], /Canvas LAN IP: 192\.168\.1\.30 \(saved\)/);
   assert.match(saved.notices.at(-1)[0], /Canvas LAN port: 35000 \(saved\)/);
   assert.match(saved.notices.at(-1)[0], /Canvas LAN origin: https:\/\/canvas\.example \(saved\)/);
   await saved.emit('session_shutdown');
-  const overridden = fixture({ env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' }, settingsPath });
+  const overridden = fixture({ env: { GENTLE_CANVAS_LAN_IP: '192.168.1.20' }, settingsPath });
   await overridden.commands.get('canvas-lan:status').handler('', overridden.ctx);
-  assert.match(overridden.notices.at(-1)[0], /Canvas LAN host: 192\.168\.1\.20 \(env\)/);
+  assert.match(overridden.notices.at(-1)[0], /Canvas LAN IP: 192\.168\.1\.20 \(env\)/);
   assert.match(overridden.notices.at(-1)[0], /Canvas LAN port: 35000 \(saved\)/);
   await overridden.emit('session_shutdown');
   const unset = fixture({ env: {}, settingsPath: '/nonexistent/canvas-status/config.json' });
@@ -142,13 +155,30 @@ test('status reports effective host and port with their source', async t => {
   await unset.emit('session_shutdown');
 });
 
+test('status readout persists in the TUI transcript instead of the shared status line', async () => {
+  const f = fixture({ tuiMode: true });
+  const renderer = f.renderers.get('canvas-lan-status');
+  assert.equal(typeof renderer, 'function');
+  await f.commands.get('canvas-lan:status').handler('', f.ctx);
+  const entry = f.entries.at(-1);
+  assert.equal(entry.customType, 'canvas-lan-status');
+  const readout = entry.data.lines.join('\n');
+  assert.match(readout, /Canvas LAN IP: 192\.168\.1\.20 \(env\)/);
+  assert.match(readout, /Canvas LAN proxy is not running/);
+  // The TUI keeps only the newest info notification in one dim line, so this
+  // readout must not depend on it.
+  assert.deepEqual(f.notices, []);
+  assert.deepEqual(renderer(entry, { expanded: false }, { fg: (_role, value) => value }).render(80), entry.data.lines);
+  await f.emit('session_shutdown');
+});
+
 test('status retires a stale card instead of advertising a dead canvas', async () => {
-  const f = fixture({ canvasAlive: false });
+  const f = fixture({ tuiMode: true, canvasAlive: false });
   await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
   assert.equal(f.widgets.size, 1);
   await f.commands.get('canvas-lan:status').handler('', f.ctx);
   assert.equal(f.widgets.size, 0);
-  const readout = f.notices.at(-1)[0];
+  const readout = f.entries.at(-1).data.lines.join('\n');
   assert.match(readout, /Canvas LAN proxy running\. Open a design to get its URL\./);
   assert.doesNotMatch(readout, /abcdefghijklmnop|\/s\//, 'no dead canvas link survives');
   await f.emit('session_shutdown');
@@ -173,7 +203,7 @@ test('setup menu persists host and port and rebuilds the controller', async t =>
   t.after(() => rm(dir, { recursive: true, force: true }));
   const f = fixture({ env: {}, settingsPath, inputResponses: [' 192.168.1.50 ', '35000', ''] });
   await f.commands.get('canvas-lan:setup').handler('', f.ctx);
-  assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { host: '192.168.1.50', port: '35000' });
+  assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { ip: '192.168.1.50', port: '35000' });
   assert.match(f.notices.at(-1)[0], /settings saved/);
   await f.commands.get('canvas-lan:start').handler('', f.ctx);
   const config = f.calls.find(call => call && typeof call === 'object' && 'host' in call);
@@ -188,14 +218,14 @@ test('sequential fallback: setup cancellation and invalid values leave saved set
   const dir = await mkdtemp(join(tmpdir(), 'canvas-menu-'));
   const settingsPath = join(dir, 'config.json');
   t.after(() => rm(dir, { recursive: true, force: true }));
-  await writeFile(settingsPath, JSON.stringify({ host: '192.168.1.20', port: '34316' }));
+  await writeFile(settingsPath, JSON.stringify({ ip: '192.168.1.20', port: '34316' }));
   for (const responses of [[undefined], ['0.0.0.0', '34316', '']]) {
     const f = fixture({ settingsPath, inputResponses: responses });
     await f.commands.get('canvas-lan:setup').handler('', f.ctx);
-    assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { host: '192.168.1.20', port: '34316' });
+    assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { ip: '192.168.1.20', port: '34316' });
     assert.deepEqual(f.calls, []);
     if (responses[0] === undefined) assert.match(f.notices.at(-1)[0], /cancelled/);
-    else assert.match(f.notices.at(-1)[0], /must be an explicit/);
+    else assert.match(f.notices.at(-1)[0], /IP must be a concrete unicast address/);
     await f.emit('session_shutdown');
   }
 });
@@ -211,8 +241,10 @@ test('setup opens a centered overlay and saves the edited values', async t => {
   const f = fixture({ tuiMode: true, env: {}, settingsPath, overlay: { keys } });
   await f.commands.get('canvas-lan:setup').handler('', f.ctx);
   assert.deepEqual(f.overlays, [{ overlay: true, overlayOptions: { anchor: 'center', width: 64, minWidth: 44 } }]);
-  assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { host: '192.168.1.50', port: '35000' });
-  assert.match(f.notices.at(-1)[0], /settings saved/);
+  assert.deepEqual(JSON.parse(await readFile(settingsPath, 'utf8')), { ip: '192.168.1.50', port: '35000' });
+  // TUI feedback is durable: a transcript entry, not the single-slot status line.
+  assert.match(f.entries.at(-1).data.lines[0], /settings saved/);
+  assert.deepEqual(f.notices, []);
   await f.emit('session_shutdown');
 });
 
@@ -226,8 +258,8 @@ test('setup overlay reports an invalid value inline and cancels without saving',
   const keys = ['\t', ...'\x7f'.repeat(5), '0', '\r', '\x1b'];
   const f = fixture({ tuiMode: true, settingsPath, overlay: { keys } });
   await f.commands.get('canvas-lan:setup').handler('', f.ctx);
-  assert.ok(f.overlayRenders.some(row => /GENTLE_CANVAS_LAN_PORT must be an integer/.test(row)));
-  assert.match(f.notices.at(-1)[0], /cancelled/);
+  assert.ok(f.overlayRenders.some(row => /PORT must be an integer/.test(row)));
+  assert.match(f.entries.at(-1).data.lines[0], /cancelled; nothing changed/);
   await assert.rejects(readFile(settingsPath, 'utf8'), { code: 'ENOENT' });
   assert.deepEqual(f.calls, []);
   await f.emit('session_shutdown');
@@ -457,7 +489,7 @@ test('invalid configuration reports an actionable error and exposes nothing', as
   const f = fixture({ env: {} });
   await f.commands.get('canvas-lan:start').handler('', f.ctx);
   assert.deepEqual(f.calls, []);
-  assert.match(f.notices.at(-1)[0], /GENTLE_CANVAS_LAN_HOST/);
+  assert.match(f.notices.at(-1)[0], /IP must be a concrete unicast address/);
   assert.equal(f.notices.at(-1)[1], 'error');
   await f.emit('session_shutdown');
 });
@@ -486,4 +518,74 @@ test('setup overlay cancels with an extended Escape sequence and saves nothing',
   assert.match(f.notices.at(-1)[0], /cancelled; nothing changed/);
   assert.equal(f.calls.includes('construct'), false);
   await f.emit('session_shutdown');
+});
+
+test('status warns that the removed HOST variable is no longer read', async () => {
+  const f = fixture({ tuiMode: true, env: { GENTLE_CANVAS_LAN_IP: '192.168.1.20', GENTLE_CANVAS_LAN_HOST: '192.168.1.99' } });
+  await f.commands.get('canvas-lan:status').handler('', f.ctx);
+  const readout = f.entries.at(-1).data.lines.join('\n');
+  assert.match(readout, /Canvas LAN IP: 192\.168\.1\.20 \(env\)/);
+  assert.match(readout, /GENTLE_CANVAS_LAN_HOST is no longer read; export GENTLE_CANVAS_LAN_IP instead\./);
+  assert.doesNotMatch(readout, /192\.168\.1\.99/);
+  await f.emit('session_shutdown');
+});
+
+test('the removed HOST variable alone cannot start a listener or reach a default address', async () => {
+  const f = fixture({ env: { GENTLE_CANVAS_LAN_HOST: '192.168.1.99' } });
+  await f.commands.get('canvas-lan:start').handler('', f.ctx);
+  assert.deepEqual(f.calls, [], 'no controller is constructed without an IP');
+  assert.match(f.notices.at(-1)[0], /IP must be a concrete unicast address/);
+  await f.emit('session_shutdown');
+});
+
+test('command feedback persists in the TUI transcript instead of the shared status line', async () => {
+  const f = fixture({ tuiMode: true });
+  await f.commands.get('canvas-lan:start').handler('', f.ctx);
+  const started = f.entries.at(-1);
+  assert.equal(started.customType, 'canvas-lan-notice');
+  assert.equal(started.data.level, 'info');
+  assert.match(started.data.lines[0], /^Canvas LAN: http:\/\/192\.168\.1\.20:34316\//);
+  assert.deepEqual(f.notices, [], 'nothing relies on the single-slot status line');
+  await f.commands.get('canvas-lan:stop').handler('', f.ctx);
+  const stopped = f.entries.at(-1);
+  assert.equal(stopped.customType, 'canvas-lan-notice');
+  assert.match(stopped.data.lines[0], /Canvas LAN proxy stopped/);
+  const renderer = f.renderers.get('canvas-lan-notice');
+  assert.equal(typeof renderer, 'function');
+  assert.deepEqual(renderer(stopped, {}, { fg: (_role, value) => value }).render(80), stopped.data.lines);
+  await f.emit('session_shutdown');
+});
+
+test('errors persist as a durable notice with the error level', async () => {
+  const failed = fixture({ tuiMode: true, env: {} });
+  await failed.commands.get('canvas-lan:start').handler('', failed.ctx);
+  const error = failed.entries.at(-1);
+  assert.equal(error.customType, 'canvas-lan-notice');
+  assert.equal(error.data.level, 'error');
+  assert.match(error.data.lines[0], /IP must be a concrete unicast address/);
+  const roles = [];
+  failed.renderers.get('canvas-lan-notice')(error, {}, { fg: (role, value) => { roles.push(role); return value; } }).render(80);
+  assert.deepEqual(roles, ['error']);
+  await failed.emit('session_shutdown');
+});
+
+
+test('saved setup settings persist as a durable notice', async t => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-notice-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const saved = fixture({
+    tuiMode: true,
+    env: {},
+    settingsPath: join(dir, 'config.json'),
+    overlay: { keys: [...'192.168.1.50', '\t', ...'\x7f'.repeat(5), ...'35000', '\r'] },
+  });
+  await saved.commands.get('canvas-lan:setup').handler('', saved.ctx);
+  const notice = saved.entries.at(-1);
+  assert.equal(notice.customType, 'canvas-lan-notice');
+  assert.match(notice.data.lines[0], /settings saved/);
+  assert.deepEqual(saved.notices, []);
+  await saved.emit('session_shutdown');
 });

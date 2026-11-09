@@ -10,13 +10,21 @@ http://LAN_IP:34316/<current-token>/
 
 The listener stays fixed; reopening a restarted canvas updates the upstream and displays the new tokenized LAN link. Old streams close and the old token is rejected.
 
-**Status:** implementation in progress. Module checks pass; consult [the evidence log](odd/tasks/canvas-lan.md) for real-canvas, browser and second-device verification status. Native review is unavailable while managed assets require a sync that the user declined. This is not review approval.
+## Install
+
+```sh
+pi install npm:@ghosthvj/gentle-canvas-lan
+```
+
+This is an add-on for [Gentle Shell](https://github.com/Gentleman-Programming/gentle-shell) running Gentle Design: the canvas it exposes is the one Gentle Design serves locally. Without that host there is nothing to proxy. The sidebar integration relies on a private host contract, so a host change can fall back to the LAN-only widget; the proxy, links and commands keep working.
+
+**Status:** implemented and covered by unit and real-canvas integration tests (`npm test`, `npm run test:canvas`). It is a private-host add-on, not an official Gentle Shell feature.
 
 ## Quick setup
 
 Requires Linux with Gentle Shell/Gentle Design and Node.js 22+. This package has no runtime dependencies beyond Node and its host.
 
-Set the address once with the setup modal — a small centered window, not a full screen — persisted in `$XDG_CONFIG_HOME/gentle-canvas-lan/config.json` (default `~/.config/gentle-canvas-lan/config.json`):
+Set the address once with the setup modal — a small centered window, not a full screen — persisted in `$XDG_CONFIG_HOME/gentle-canvas-lan/config.json` (default `~/.config/gentle-canvas-lan/config.json`) under the keys `ip`, `port` and `publicOrigin`:
 
 ```text
 /canvas-lan:setup
@@ -46,18 +54,22 @@ This is a **private host contract**, not an official sidebar API. No installed f
 
 | Command | Behavior |
 | --- | --- |
+| `/canvas-lan:setup` | Open a centered configuration modal for the bind IP, port and optional external origin; save them and rebuild the proxy. The `save` / `next` / `cancel` hints at the bottom are clickable, and `esc` cancels even on terminals that report extended key sequences. |
 | `/canvas-lan:start` | Enable/start the fixed listener. It never advertises a link for a canvas that stopped answering: the card appears only while the registered canvas is alive. |
-| `/canvas-lan:status` | Report effective host/port (env or saved), listener state and current LAN URL when available. It probes the registration first and retires a stale card. |
+| `/canvas-lan:status` | Report the effective IP and port (env or saved), listener state and current LAN URL when available. It probes the registration first and retires a stale card. In the TUI the readout is appended to the transcript as a custom entry, so a later notification cannot replace it. |
 | `/canvas-lan:stop` | Stop the listener and disable automatic restart until explicit start. |
-| `/canvas-lan:setup` | Open a centered configuration modal for host, port and optional external origin; save them and rebuild the proxy. The `save` / `next` / `cancel` hints at the bottom are clickable, and `esc` cancels even on terminals that report extended key sequences. |
+
+The order in this table is the registration order, which is the order the host shows in its command menu: configure, start, inspect, stop.
 
 Stopping the design canvas clears its registered target. Session shutdown closes the proxy and pending startup. A port conflict is reported without killing its owner or silently choosing another port. Independent sessions need distinct configured ports.
+
+In the TUI, command feedback is transcript content: `/canvas-lan:start`, `/canvas-lan:stop`, `/canvas-lan:setup` results and errors are appended as custom entries (errors in the error color) instead of using the shell's single-slot status line, which the next info notification would erase. Non-TUI hosts keep using `notify`.
 
 A registration is a claim, not a guarantee: `start` and `status` probe it once over HTTP before exposing a link, and revoke it when the local canvas no longer answers. While the port stays reserved without a live canvas, any request to the LAN address gets a short `text/html` page that says the canvas is not running and how to bring it back, instead of a bare `Bad Gateway`.
 
 ## Configuration and security
 
-- `GENTLE_CANVAS_LAN_HOST` is required: a concrete IP, not `0.0.0.0`, `::` or an automatically selected NIC.
+- `GENTLE_CANVAS_LAN_IP` is required: a concrete IP, not `0.0.0.0`, `::` or an automatically selected NIC. It was renamed from `GENTLE_CANVAS_LAN_HOST`, which is no longer read; `/canvas-lan:status` warns when the old variable is still exported.
 - `GENTLE_CANVAS_LAN_PORT` defaults to `34316`.
 - `GENTLE_CANVAS_LAN_PUBLIC_ORIGIN` optionally specifies an exact external HTTP/HTTPS origin (no trailing slash). Otherwise it is derived from the bind address and port.
 - HTTP does not encrypt tokenized URLs, designs or comments. Use only a trusted network, restrict inbound access yourself, and never forward this port to the internet.
@@ -74,7 +86,7 @@ Details: [configuration](docs/configuration.md), [proxy](docs/proxy.md), [contro
 For a reverse proxy on the same host, bind the extension to loopback and specify its external origin:
 
 ```sh
-export GENTLE_CANVAS_LAN_HOST=127.0.0.1
+export GENTLE_CANVAS_LAN_IP=127.0.0.1
 export GENTLE_CANVAS_LAN_PUBLIC_ORIGIN=https://canvas.example
 ```
 
@@ -96,8 +108,8 @@ That integration command checks both the installed canvas server and the actual 
 
 After automated checks, manually verify from another LAN device: open a design, render its artboard/resources, add/send a fixture comment, observe live updates, restart the canvas and use its new link, confirm the old link fails, then stop the proxy and confirm the port is inaccessible. Do not run these against valuable designs or an agent session where fixture implementation requests would be undesirable.
 
-## Project
+## License
 
-[Implementation plan and evidence](odd/tasks/canvas-lan.md). Work is kept in local work-unit commits; no remote publishing configured. Package is private and unlicensed pending a licensing decision.
+MIT. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the upstream MIT attribution.
 
 Inspired by [gentle-canvas-tailscale](https://github.com/BlazzzPlay/gentle-canvas-tailscale). The implementation uses direct trusted upstream registration instead of port scanning. The guarded sidebar integration is adapted from [mcp-sidebar](https://github.com/oniricosistemas/mcp-sidebar); see `THIRD_PARTY_NOTICES.md` for MIT attribution.

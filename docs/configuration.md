@@ -8,14 +8,14 @@ Controller and command integration are separate implementation units.
 
 | Environment variable | Meaning |
 | --- | --- |
-| `GENTLE_CANVAS_LAN_HOST` | Required concrete IPv4 or IPv6 bind address. No automatic NIC selection. |
+| `GENTLE_CANVAS_LAN_IP` | Required concrete IPv4 or IPv6 bind address. No automatic NIC selection. Renamed from `GENTLE_CANVAS_LAN_HOST`, which is no longer read. |
 | `GENTLE_CANVAS_LAN_PORT` | Listener port; defaults to `34316` only when absent. Explicit values must be decimal integers from `1` to `65535`. |
 | `GENTLE_CANVAS_LAN_PUBLIC_ORIGIN` | Optional external HTTP/HTTPS origin; otherwise derived from the bind address and port. |
 
 For example, supply these variables to the future extension host process:
 
 ```sh
-export GENTLE_CANVAS_LAN_HOST=192.168.1.20
+export GENTLE_CANVAS_LAN_IP=192.168.1.20
 export GENTLE_CANVAS_LAN_PORT=34316
 ```
 
@@ -26,10 +26,15 @@ Loopback addresses are allowed for tests or a reverse proxy on the same host.
 IPv6 literals are configured without brackets; derived origins add brackets.
 Invalid explicit settings fail rather than silently falling back to defaults.
 
+Validation messages are short (`IP`, `PORT`, `PUBLIC ORIGIN`) so they fit
+inside the setup modal instead of being clipped. A leftover
+`GENTLE_CANVAS_LAN_HOST` is ignored and `/canvas-lan:status` says so, rather
+than quietly binding the wrong address.
+
 For later TLS termination, configure an external origin explicitly:
 
 ```sh
-export GENTLE_CANVAS_LAN_HOST=127.0.0.1
+export GENTLE_CANVAS_LAN_IP=127.0.0.1
 export GENTLE_CANVAS_LAN_PUBLIC_ORIGIN=https://canvas.example
 ```
 
@@ -42,7 +47,7 @@ The configuration helper does not read or trust forwarded request headers.
 
 `/canvas-lan:setup` opens a centered modal in the TUI — the same overlay
 geometry as the Gentle Shell usage window (a fixed `64`-column card, modal
-minimum `44` columns, anchored in the middle) — with one field per setting: host, port and optional
+minimum `44` columns, anchored in the middle) — with one field per setting: `IP to bind`, `Port` and optional
 public origin. `tab` or the arrow keys move between fields, `enter` validates
 and saves, and `esc` closes it without touching the file. The hint row at the
 bottom (`enter save`, `tab next`, `esc cancel`) is clickable: a left click on
@@ -59,8 +64,14 @@ compact list; hosts without TUI overlay support get the sequential prompts
 instead.
 
 Saving writes `$XDG_CONFIG_HOME/gentle-canvas-lan/config.json`
-(default `~/.config/gentle-canvas-lan/config.json`) with `host`, `port` and an
-optional `publicOrigin`. The file is created with mode `0600` and replaced
+(default `~/.config/gentle-canvas-lan/config.json`) with `ip`, `port` and an
+optional `publicOrigin`. A file written before the rename carries `host`
+instead; it is read once as `ip` and rewritten under the new key on the next
+save, so a stored address is not lost by the rename. A hand-edited file that
+carries a non-string `ip` alongside a valid legacy `host` also falls back to the
+legacy value; the only files that lose the address are ones where neither key
+holds a string, and those fail loudly (`IP is required.`) instead of binding a
+default. The file is created with mode `0600` and replaced
 atomically after validating the complete trio. Environment variables override
 saved values individually, so an exported `GENTLE_CANVAS_LAN_PORT` wins over
 the menu while it is set. Saving disposes the running proxy; reopen the design
@@ -68,7 +79,9 @@ or run `/canvas-lan:start` to bind the new endpoint.
 
 ## Register a trusted canvas URL
 
-`readConfig(env = process.env)` returns a frozen `{host, port, publicOrigin}`.
+`readConfig(env = process.env)` returns a frozen `{host, port, publicOrigin}`,
+where `host` keeps Node's `listen()` terminology for the bind address while the
+environment variable and the saved key are named `ip`.
 `parseCanvasUrl(url)` returns a frozen `{url, origin, token}`. It accepts only
 strings with HTTP, exactly `127.0.0.1` or `localhost`, an explicit port from
 `1` to `65535`, and a first raw path segment matching
