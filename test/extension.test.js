@@ -19,7 +19,14 @@ function fixture(options = {}) {
   const widgets = new Map();
   let running = false;
   let canvas = true;
-  const state = () => ({ running, lanUrl: running && canvas ? 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/' : null });
+  const local = 'http://127.0.0.1:41234/abcdefghijklmnop/d/demo/';
+  // Mirrors the real controller: no link once nothing is registered.
+  const state = () => ({
+    running,
+    localUrl: canvas ? local : null,
+    lanUrl: running && canvas ? 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/' : null,
+    shortUrl: running && canvas ? 'http://192.168.1.20:34316/s/0123456789abcdef' : null,
+  });
   const controller = {
     status: state,
     async start() { calls.push('start'); running = true; return state(); },
@@ -32,7 +39,7 @@ function fixture(options = {}) {
       return canvas;
     },
     clearCanvas() { calls.push('clear'); canvas = false; },
-    async shutdown() { calls.push('shutdown'); running = false; },
+    async shutdown() { calls.push('shutdown'); running = false; canvas = false; },
   };
   const pi = {
     on: (event, fn) => handlers.set(event, fn),
@@ -322,7 +329,8 @@ test('later MCP-style footer does not duplicate the LAN presentation', async () 
     render: width => [...captured.render(width), 'MCP'],
     invalidate: () => captured.invalidate(),
   });
-  const lan = 'http://192.168.1.20:34316/abcdefghijklmnop/d/demo/';
+  // The card renders the stable shortcut, which is what must not be duplicated.
+  const lan = 'http://192.168.1.20:34316/s/0123456789abcdef';
   const sidebar = host.parts.get('footer').render(80).join('');
   const fallback = f.component().render(80).join('');
   assert.equal(Number(sidebar.includes(lan)) + Number(fallback.includes(lan)), 1);
@@ -588,4 +596,26 @@ test('saved setup settings persist as a durable notice', async t => {
   assert.match(notice.data.lines[0], /settings saved/);
   assert.deepEqual(saved.notices, []);
   await saved.emit('session_shutdown');
+});
+
+test('saving a new port keeps the canvas registered for the next start', async t => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-rebind-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const f = fixture({
+    tuiMode: true,
+    settingsPath: join(dir, 'config.json'),
+    overlay: { keys: ['\t', ...'\x7f'.repeat(5), ...'8099', '\r'] },
+  });
+  await f.emit('tool_execution_end', { toolName: 'gentle_design', result: { details: { url } } });
+  assert.equal(f.widgets.size, 1, 'the open design registers the canvas');
+  await f.commands.get('canvas-lan:setup').handler('', f.ctx);
+  assert.equal(f.widgets.size, 0, 'saving stops the listener and clears the card');
+  await f.commands.get('canvas-lan:start').handler('', f.ctx);
+  assert.ok(f.calls.some(call => Array.isArray(call) && call[0] === 'open'), 'the registered canvas is kept');
+  assert.match(f.entries.at(-1).data.lines[0], /^Canvas LAN: http:\/\/192\.168\.1\.20:34316\//);
+  assert.equal(f.widgets.size, 1, 'the card returns with the preserved canvas');
+  await f.emit('session_shutdown');
 });

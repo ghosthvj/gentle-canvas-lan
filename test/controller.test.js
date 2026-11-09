@@ -113,3 +113,15 @@ test('real occupied port fails without stealing it; later explicit start can rec
   assert.equal((await c.start()).port, port);
   await c.shutdown();
 });
+
+test('no short link is advertised while no canvas is registered', async () => {
+  const f = fake();
+  const c = createController({ config, createProxy: f.createProxy });
+  const running = await c.start();
+  assert.equal(running.running, true);
+  assert.equal(running.shortUrl, null, 'the shortcut needs a canvas to redirect to');
+  assert.equal(running.lanUrl, null);
+  const served = await c.openCanvas(url);
+  assert.match(served.shortUrl, /\/s\/[0-9a-f]{16}$/);
+  await c.shutdown();
+});

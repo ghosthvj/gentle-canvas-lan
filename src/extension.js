@@ -238,10 +238,22 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       return showNotice(ctx, error instanceof TypeError ? error.message : 'Could not save the Canvas LAN settings. Check the configured address and port.', 'error');
     }
     saved = next;
+    // Saving rebuilds the listener only. The registered canvas survives so the
+    // next start serves it on the new endpoint instead of answering 502.
+    const previous = controller?.status().localUrl ?? null;
     if (controller) {
       await controller.shutdown();
       controller = undefined;
       clearLinks();
+    }
+    if (previous) {
+      try {
+        const instance = await getController();
+        await instance.stop();
+        await instance.openCanvas(previous);
+      } catch {
+        // An invalid effective configuration is reported by the next command.
+      }
     }
     const overrides = ['GENTLE_CANVAS_LAN_IP', 'GENTLE_CANVAS_LAN_PORT', 'GENTLE_CANVAS_LAN_PUBLIC_ORIGIN']
       .filter(key => env[key] !== undefined);

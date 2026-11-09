@@ -42,7 +42,7 @@ const probeCanvasLiveness = async url => {
       port: running ? proxy.port : null,
       localUrl: current?.url ?? null,
       lanUrl: running && local ? `${config.publicOrigin}${local.pathname}${local.search}` : null,
-      shortUrl: running ? `${config.publicOrigin}/s/${shortCode}` : null,
+      shortUrl: running && current ? `${config.publicOrigin}/s/${shortCode}` : null,
     };
   };
   const close = async () => {
