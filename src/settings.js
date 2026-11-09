@@ -6,7 +6,9 @@ import { readConfig } from './config.js';
 export const defaultSettingsPath = (env = process.env) =>
   join(env.XDG_CONFIG_HOME ?? join(env.HOME ?? homedir(), '.config'), 'gentle-canvas-lan', 'config.json');
 
-const KEYS = ['host', 'port', 'publicOrigin'];
+const KEYS = ['ip', 'port', 'publicOrigin'];
+// Settings written before the IP rename still carry the old key.
+const LEGACY_KEYS = { host: 'ip' };
 
 /** Read the persisted menu settings; missing or malformed files behave as empty. */
 export async function loadSettings(path = defaultSettingsPath()) {
@@ -20,13 +22,17 @@ export async function loadSettings(path = defaultSettingsPath()) {
   let parsed;
   try { parsed = JSON.parse(text); } catch { return {}; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-  return Object.fromEntries(KEYS.filter(key => typeof parsed[key] === 'string').map(key => [key, parsed[key]]));
+  const normalized = { ...parsed };
+  for (const [legacy, current] of Object.entries(LEGACY_KEYS)) {
+    if (typeof normalized[current] !== 'string' && typeof parsed[legacy] === 'string') normalized[current] = parsed[legacy];
+  }
+  return Object.fromEntries(KEYS.filter(key => typeof normalized[key] === 'string').map(key => [key, normalized[key]]));
 }
 
 /** Environment wins for one-off overrides; saved values fill what is absent. */
 export function mergeSettings(env = process.env, saved = {}) {
   const merged = { ...env };
-  if (env.GENTLE_CANVAS_LAN_HOST === undefined && saved.host !== undefined) merged.GENTLE_CANVAS_LAN_HOST = saved.host;
+  if (env.GENTLE_CANVAS_LAN_IP === undefined && saved.ip !== undefined) merged.GENTLE_CANVAS_LAN_IP = saved.ip;
   if (env.GENTLE_CANVAS_LAN_PORT === undefined && saved.port !== undefined) merged.GENTLE_CANVAS_LAN_PORT = saved.port;
   if (env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN === undefined && saved.publicOrigin !== undefined) {
     merged.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN = saved.publicOrigin;
@@ -37,13 +43,13 @@ export function mergeSettings(env = process.env, saved = {}) {
 /** Validate the complete persisted trio before it is used or written. */
 export function validateSettings(values = {}) {
   const next = {};
-  if (typeof values.host !== 'string' || !values.host.trim()) throw new TypeError('Host is required.');
-  next.host = values.host.trim();
-  if (typeof values.port !== 'string' || !values.port.trim()) throw new TypeError('Port is required.');
+  if (typeof values.ip !== 'string' || !values.ip.trim()) throw new TypeError('IP is required.');
+  next.ip = values.ip.trim();
+  if (typeof values.port !== 'string' || !values.port.trim()) throw new TypeError('PORT is required.');
   next.port = values.port.trim();
   if (typeof values.publicOrigin === 'string' && values.publicOrigin.trim()) next.publicOrigin = values.publicOrigin.trim();
   readConfig({
-    GENTLE_CANVAS_LAN_HOST: next.host,
+    GENTLE_CANVAS_LAN_IP: next.ip,
     GENTLE_CANVAS_LAN_PORT: next.port,
     ...(next.publicOrigin ? { GENTLE_CANVAS_LAN_PUBLIC_ORIGIN: next.publicOrigin } : {}),
   });

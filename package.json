@@ -1,13 +1,35 @@
 {
-  "name": "gentle-canvas-lan",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Access the dynamic Gentle Design canvas through a fixed LAN endpoint.",
+  "name": "@ghosthvj/gentle-canvas-lan",
+  "version": "0.1.0",
+  "description": "Fixed LAN endpoint for the Gentle Design canvas: guarded proxy, stable short link and copyable URLs for the Pi coding agent.",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "author": "ghosthvj",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "gentle-design",
+    "design-canvas",
+    "lan",
+    "proxy"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ghosthvj/gentle-canvas-lan.git"
+  },
+  "homepage": "https://github.com/ghosthvj/gentle-canvas-lan#readme",
+  "bugs": {
+    "url": "https://github.com/ghosthvj/gentle-canvas-lan/issues"
+  },
+  "files": [
+    "extensions/",
+    "src/",
+    "CHANGELOG.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
   "scripts": {
     "test": "node --test test/*.test.js",
     "test:canvas": "node --test integration/*.test.js"

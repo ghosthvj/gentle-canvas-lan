@@ -4,7 +4,7 @@ import { readConfig, parseCanvasUrl, createCanvasRegistry } from '../src/config.
 
 const token = 'Abcd_0123456789-x';
 const target = `http://127.0.0.1:43210/${token}/`;
-const env = { GENTLE_CANVAS_LAN_HOST: '192.168.1.20' };
+const env = { GENTLE_CANVAS_LAN_IP: '192.168.1.20' };
 
 function rejectsWithoutReplacing(action) {
   const registry = createCanvasRegistry();
@@ -24,7 +24,7 @@ test('explicit bind address, fixed default port and immutable configuration', ()
 
 for (const host of ['127.0.0.1', '::1', '2001:db8::1234', '::ffff:127.0.0.1']) {
   test(`concrete bind address ${host}`, () => {
-    const config = readConfig({ GENTLE_CANVAS_LAN_HOST: host });
+    const config = readConfig({ GENTLE_CANVAS_LAN_IP: host });
     assert.equal(config.host, host);
     assert.equal(config.publicOrigin, new URL(`http://${host.includes(':') ? `[${host}]` : host}:34316`).origin);
   });
@@ -34,7 +34,7 @@ for (const host of [undefined, '', 'localhost', '0.0.0.0', '::', '0:0:0:0:0:0:0:
   '224.0.0.1', '239.255.255.255', 'ff02::1', '::ffff:224.0.0.1', '::ffff:0.0.0.0',
   '::ffff:e000:1', '[::1]', 'fe80::1%eth0', '192.168.1.1 ', '127.1', 123]) {
   test(`reject bind address ${String(host)}`, () => {
-    rejectsWithoutReplacing(() => readConfig({ GENTLE_CANVAS_LAN_HOST: host }));
+    rejectsWithoutReplacing(() => readConfig({ GENTLE_CANVAS_LAN_IP: host }));
   });
 }
 

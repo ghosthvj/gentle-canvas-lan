@@ -42,26 +42,26 @@ function forbiddenIPv6(address) {
 
 function parsePublicOrigin(value) {
   if (typeof value !== 'string' || /[\s\\]/.test(value)) {
-    invalid('GENTLE_CANVAS_LAN_PUBLIC_ORIGIN must be an HTTP or HTTPS origin only.');
+    invalid('PUBLIC ORIGIN must be an HTTP or HTTPS origin.');
   }
   const match = /^(https?):\/\/(\[[0-9a-f: .]+\]|[^:/?#@%]+)(?::([0-9]+))?$/i.exec(value);
-  if (!match) invalid('GENTLE_CANVAS_LAN_PUBLIC_ORIGIN must be an HTTP or HTTPS origin only.');
+  if (!match) invalid('PUBLIC ORIGIN must be an HTTP or HTTPS origin.');
   if (match[3] !== undefined) parsePort(match[3], 'Public origin port');
   try {
     return new URL(value).origin;
   } catch {
-    invalid('GENTLE_CANVAS_LAN_PUBLIC_ORIGIN must be an HTTP or HTTPS origin only.');
+    invalid('PUBLIC ORIGIN must be an HTTP or HTTPS origin.');
   }
 }
 
 export function readConfig(env = process.env) {
-  const host = env.GENTLE_CANVAS_LAN_HOST;
+  const host = env.GENTLE_CANVAS_LAN_IP;
   const family = typeof host === 'string' && !host.includes('%') ? isIP(host) : 0;
   if (!family || (family === 4 ? forbiddenIPv4(host) : forbiddenIPv6(host))) {
-    invalid('GENTLE_CANVAS_LAN_HOST must be an explicit concrete IP address, not unspecified or multicast.');
+    invalid('IP must be a concrete unicast address.');
   }
   const port = env.GENTLE_CANVAS_LAN_PORT === undefined
-    ? 34316 : parsePort(env.GENTLE_CANVAS_LAN_PORT, 'GENTLE_CANVAS_LAN_PORT');
+    ? 34316 : parsePort(env.GENTLE_CANVAS_LAN_PORT, 'PORT');
   const authority = family === 6 ? `[${host}]` : host;
   const publicOrigin = env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN === undefined
     ? new URL(`http://${authority}:${port}`).origin
