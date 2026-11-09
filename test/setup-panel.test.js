@@ -342,3 +342,22 @@ test('hovering a hint paints it with the shell hover role and moving away clears
   f.panel.render(60);
   assert.equal(f.theme.paints.some(([role]) => role === 'warning'), false);
 });
+
+test('a long validation error keeps every frame row inside the requested width', () => {
+  const long = 'A deliberately long validation message that cannot fit inside the modal frame without clipping.';
+  for (const width of [64, 60, 44, 30]) {
+    const f = fixture({ validate: () => long });
+    f.panel.handleInput('\r');
+    const rows = plainRows(f.panel, width);
+    for (const [index, row] of rows.entries()) {
+      assert.equal([...row].length, width, `row ${index} at width ${width} is exactly ${width} columns`);
+      assert.equal(visibleWidth(row), width, `row ${index} at width ${width} measures ${width}`);
+    }
+    if (width >= 30) {
+      assert.ok(rows[0].startsWith('╭'), 'frame opens');
+      assert.ok(rows.at(-1).startsWith('╰'), 'frame closes');
+      for (const row of rows) assert.match(row[0], /[╭│╰]/, 'every row keeps its left border');
+      for (const row of rows) assert.match(row.at(-1), /[╮│╯]/, 'every row keeps its right border');
+    }
+  }
+});
