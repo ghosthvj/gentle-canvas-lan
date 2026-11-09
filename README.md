@@ -25,11 +25,16 @@ No tunnels, no Tailscale, one stable address.
 ## Install
 
 ```sh
+pi install npm:@ghosthvj/gentle-canvas-lan
+```
+
+From a git checkout instead:
+
+```sh
 pi install git:github.com/ghosthvj/gentle-canvas-lan
 ```
 
-Once it is on npm, the same package installs with `pi install npm:@ghosthvj/gentle-canvas-lan`.
-To try it for a single run without touching your settings, use `pi -e git:github.com/ghosthvj/gentle-canvas-lan`.
+To try it once without touching your settings: `pi -e npm:@ghosthvj/gentle-canvas-lan`.
 
 ## Configure
 
