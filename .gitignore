@@ -1,4 +1,5 @@
 # Local harness state (pre-existing)
+odd/
 .atl/
 .codegraph/
 .test-tmp/

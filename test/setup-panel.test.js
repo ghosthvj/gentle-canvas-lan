@@ -366,15 +366,15 @@ test('a long validation error keeps every frame row inside the requested width',
 test('real validation messages fit the frame in full, without an ellipsis', async () => {
   const cases = [
     [{ ip: '', port: '8590' }, 'IP is required.'],
-    [{ ip: '10.10.5.34/24', port: '8590' }, 'IP must be a concrete unicast address.'],
-    [{ ip: '10.10.5.34', port: '8590-8' }, 'PORT must be an integer from 1 to 65535.'],
-    [{ ip: '10.10.5.34', port: '8590', publicOrigin: 'ftp://x' }, 'PUBLIC ORIGIN must be an HTTP or HTTPS origin.'],
+    [{ ip: '198.51.100.10/24', port: '8590' }, 'IP must be a concrete unicast address.'],
+    [{ ip: '198.51.100.10', port: '8590-8' }, 'PORT must be an integer from 1 to 65535.'],
+    [{ ip: '198.51.100.10', port: '8590', publicOrigin: 'ftp://x' }, 'PUBLIC ORIGIN must be an HTTP or HTTPS origin.'],
   ];
   for (const width of [64, 60]) {
     for (const [values, message] of cases) {
       const f = fixture({
         values,
-        initial: { ip: '10.10.5.34', port: '8590', publicOrigin: '' },
+        initial: { ip: '198.51.100.10', port: '8590', publicOrigin: '' },
         validate: candidate => {
           try { validateSettings(candidate); return null; } catch (error) { return error.message; }
         },

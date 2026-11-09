@@ -10,7 +10,15 @@ http://LAN_IP:34316/<current-token>/
 
 The listener stays fixed; reopening a restarted canvas updates the upstream and displays the new tokenized LAN link. Old streams close and the old token is rejected.
 
-**Status:** implementation in progress. Module checks pass; consult [the evidence log](odd/tasks/canvas-lan.md) for real-canvas, browser and second-device verification status. Native review is unavailable while managed assets require a sync that the user declined. This is not review approval.
+## Install
+
+```sh
+pi install npm:@ghosthvj/gentle-canvas-lan
+```
+
+This is an add-on for [Gentle Shell](https://github.com/Gentleman-Programming/gentle-shell) running Gentle Design: the canvas it exposes is the one Gentle Design serves locally. Without that host there is nothing to proxy. The sidebar integration relies on a private host contract, so a host change can fall back to the LAN-only widget; the proxy, links and commands keep working.
+
+**Status:** implemented and covered by unit and real-canvas integration tests (`npm test`, `npm run test:canvas`). It is a private-host add-on, not an official Gentle Shell feature.
 
 ## Quick setup
 
@@ -100,8 +108,8 @@ That integration command checks both the installed canvas server and the actual 
 
 After automated checks, manually verify from another LAN device: open a design, render its artboard/resources, add/send a fixture comment, observe live updates, restart the canvas and use its new link, confirm the old link fails, then stop the proxy and confirm the port is inaccessible. Do not run these against valuable designs or an agent session where fixture implementation requests would be undesirable.
 
-## Project
+## License
 
-[Implementation plan and evidence](odd/tasks/canvas-lan.md). Work is kept in local work-unit commits; no remote publishing configured. Package is private and unlicensed pending a licensing decision.
+MIT. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the upstream MIT attribution.
 
 Inspired by [gentle-canvas-tailscale](https://github.com/BlazzzPlay/gentle-canvas-tailscale). The implementation uses direct trusted upstream registration instead of port scanning. The guarded sidebar integration is adapted from [mcp-sidebar](https://github.com/oniricosistemas/mcp-sidebar); see `THIRD_PARTY_NOTICES.md` for MIT attribution.
