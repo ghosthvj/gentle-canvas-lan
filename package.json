@@ -1,6 +1,6 @@
 {
   "name": "@ghosthvj/gentle-canvas-lan",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fixed LAN endpoint for the Gentle Design canvas: guarded proxy, stable short link and copyable URLs for the Pi coding agent.",
   "type": "module",
   "engines": {
@@ -35,7 +35,9 @@
     "test:canvas": "node --test integration/*.test.js"
   },
   "pi": {
-    "extensions": ["./extensions/canvas-lan.js"]
+    "extensions": [
+      "./extensions/canvas-lan.js"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
