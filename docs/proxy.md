@@ -7,7 +7,8 @@ configuration and no socket until `start()` is called.
 ## Interface
 
 ```js
-const proxy = createCanvasProxy({ host, port, publicOrigin, shortCode? });
+const proxy = createCanvasProxy({ host, port, publicOrigin, shortCode?,
+  maxBodyBytes?, maxConnections?, failureLimit?, failureWindowMs? });
 proxy.setTarget({ origin, token, url? });
 const actualPort = await proxy.start();
 await proxy.stop();
@@ -36,6 +37,7 @@ canvas path without reaching upstream. A missing or wrong code is `404`, no targ
 | Registration | A trusted target is required | `502` page |
 | Path | Raw first segment equals the token; no absolute form, traversal or backslash tricks | `404` |
 | Origin | Exact public origin, except the reads below | `403` |
+| Body size | Declared or streamed request bodies within `maxBodyBytes` (default 50 MB) | `413` |
 | Upstream | Response headers within five seconds | `502` page |
 
 Checks run in that order. Only `GET` may omit `Origin`. `Origin: null` is accepted
@@ -43,6 +45,11 @@ only for `files/...`, `system.html` and `assets/inspector.js`, and stays `null`
 upstream; every other allowed request needs the exact public origin, which is
 rewritten to the upstream origin. Methods, status codes and bodies stay
 upstream-owned, including `405`/`Allow`.
+
+Path checks decode each segment iteratively (up to five rounds) before accepting it,
+so double-encoded dot segments such as `%252e%252e%252f` are rejected rather than
+forwarded for the upstream server to decode again. Capability strings (the token
+path prefix and the short code) are compared with `timingSafeEqual`.
 
 Error responses carry only the table text plus a newline, with no request or target
 details, and have no body on `HEAD`. The `502` is the exception: the port stays
@@ -61,7 +68,15 @@ including `frame-ancestors 'none'`.
 Responses are piped without buffering. The header deadline is cleared once headers
 arrive, so an idle SSE stream stays open. A client disconnect cancels the upstream
 request; an upstream abort after the response started terminates it instead of
-injecting an error body.
+injecting an error body. When a response finishes while the client request body is
+still streaming, the client request is destroyed so a late body cannot hold the
+upstream open.
+
+Concurrent client sockets above `maxConnections` (default 64) are destroyed before
+request handling. Capability failures (wrong host, origin, token or short code) are
+counted per client address; above `failureLimit` (default 30) within `failureWindowMs`
+(default 60 s) the same rejection answers `429`. Legitimate requests are never
+counted, so they are never throttled, and expired buckets recover without a restart.
 
 An `https` public origin allows TLS termination in front of this listener: the
 reverse proxy must forward that external `Host` and the browser's `Origin`. Forwarded

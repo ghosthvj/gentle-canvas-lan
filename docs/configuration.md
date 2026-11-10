@@ -11,6 +11,8 @@ validates both.
 | `GENTLE_CANVAS_LAN_IP` | yes | Concrete IPv4 or IPv6 address of this host. |
 | `GENTLE_CANVAS_LAN_PORT` | no | Listener port, `1`–`65535`. Defaults to `34316`. |
 | `GENTLE_CANVAS_LAN_PUBLIC_ORIGIN` | no | Exact `http(s)://host[:port]` origin used in links, for a reverse proxy that terminates TLS. |
+| `GENTLE_CANVAS_LAN_MAX_BODY_BYTES` | no | Cap on request bodies forwarded upstream. Defaults to `52428800` (50 MB). |
+| `GENTLE_CANVAS_LAN_MAX_CONNECTIONS` | no | Cap on concurrent client sockets. Defaults to `64`. |
 
 Hostnames, wildcard or unspecified addresses (`0.0.0.0`, `::`), multicast addresses
 and scoped IPv6 literals are rejected; loopback is allowed for tests or a reverse
@@ -19,6 +21,15 @@ them. An origin carries only scheme, host and an optional valid port: credential
 paths (even a trailing `/`), query strings and fragments are rejected, and default
 ports are dropped. Invalid values fail with a `TypeError` instead of falling back to
 a default.
+
+## Public origin resolution
+
+A hostname public origin is resolved when settings are saved: a name that does not
+resolve is rejected before anything is persisted. `/canvas-lan:status` reports where
+a hostname origin points: the bind IP (direct exposure), another private address
+(the reverse-proxy case), or a public address, which is flagged as a warning. An
+origin hostname controlled by a third party would let that third party pass the
+Origin gate, including POSTs, so keep the DNS record under your control.
 
 ## Setup modal
 

@@ -44,13 +44,15 @@ Run `/canvas-lan:setup`.
   <img src="docs/assets/canvas-lan-setup.png" alt="The Canvas LAN setup modal with IP, port and public origin fields" width="520">
 </p>
 
-It writes `~/.config/gentle-canvas-lan/config.json` (mode `0600`, atomic replace) and rebuilds the proxy.
+It writes `~/.config/gentle-canvas-lan/config.json` (mode `0600`, atomic replace) and rebuilds the proxy. The two optional caps can also be saved there as plain JSON keys, e.g. `{ "ip": "192.168.1.20", "port": "34316", "maxBodyBytes": "10485760" }`.
 
 | Setting | Environment variable | Notes |
 | --- | --- | --- |
 | Bind IP | `GENTLE_CANVAS_LAN_IP` | Required. A concrete IPv4/IPv6 address of this host, never `0.0.0.0`, `::` or a hostname. |
 | Port | `GENTLE_CANVAS_LAN_PORT` | Defaults to `34316`. |
 | Public origin | `GENTLE_CANVAS_LAN_PUBLIC_ORIGIN` | Optional exact `http(s)://host[:port]` origin when a reverse proxy terminates TLS. |
+| Max body size | `GENTLE_CANVAS_LAN_MAX_BODY_BYTES` | Optional cap in bytes for request bodies forwarded to the canvas. Defaults to `52428800` (50 MB). |
+| Max connections | `GENTLE_CANVAS_LAN_MAX_CONNECTIONS` | Optional cap on concurrent client connections. Defaults to `64`. |
 
 Environment variables win per key over saved values.
 
@@ -82,7 +84,7 @@ Traffic is plain HTTP and there is no authentication. Tokenized URLs and the sho
 
 ## Docs
 
-[Configuration](docs/configuration.md) · [Proxy](docs/proxy.md) · [Controller](docs/controller.md) · [Sidebar adapter](docs/sidebar-adapter.md) · [Card](docs/lan-panel.md) · [Changelog](CHANGELOG.md)
+[Configuration](docs/configuration.md) · [Public origin trust](docs/public-origin.md) · [Proxy](docs/proxy.md) · [Controller](docs/controller.md) · [Sidebar adapter](docs/sidebar-adapter.md) · [Card](docs/lan-panel.md) · [Changelog](CHANGELOG.md)
 
 ## License
 
