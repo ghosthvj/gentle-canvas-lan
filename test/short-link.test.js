@@ -99,6 +99,7 @@ test('card shows only the short capability while status and tool output keep the
   const upstreamPort = upstream.address().port;
   installCanvasLan(pi, {
     env: { GENTLE_CANVAS_LAN_IP: '127.0.0.1', GENTLE_CANVAS_LAN_PORT: '34317' },
+    settingsPath: '/nonexistent/gentle-canvas-lan/config.json',
     loadUi: async () => ({
       truncateToWidth: (value, width) => value.slice(0, width),
       visibleWidth: value => value.length,
