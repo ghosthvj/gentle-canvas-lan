@@ -16,6 +16,17 @@ function parsePort(value, label) {
   return port;
 }
 
+function parseMaxBody(value, label) {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    invalid(`${label} must be an integer from 1 to 2147483647.`);
+  }
+  const bytes = Number(value);
+  if (!Number.isInteger(bytes) || bytes < 1 || bytes > 2147483647) {
+    invalid(`${label} must be an integer from 1 to 2147483647.`);
+  }
+  return bytes;
+}
+
 function forbiddenIPv4(address) {
   const bytes = address.split('.').map(Number);
   return bytes.every((byte) => byte === 0) || (bytes[0] >= 224 && bytes[0] <= 239);
@@ -66,7 +77,15 @@ export function readConfig(env = process.env) {
   const publicOrigin = env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN === undefined
     ? new URL(`http://${authority}:${port}`).origin
     : parsePublicOrigin(env.GENTLE_CANVAS_LAN_PUBLIC_ORIGIN);
-  return Object.freeze({ host, port, publicOrigin });
+  const maxBodyBytes = env.GENTLE_CANVAS_LAN_MAX_BODY_BYTES === undefined
+    ? undefined : parseMaxBody(env.GENTLE_CANVAS_LAN_MAX_BODY_BYTES, 'MAX BODY BYTES');
+  const maxConnections = env.GENTLE_CANVAS_LAN_MAX_CONNECTIONS === undefined
+    ? undefined : parseMaxBody(env.GENTLE_CANVAS_LAN_MAX_CONNECTIONS, 'MAX CONNECTIONS');
+  return Object.freeze({
+    host, port, publicOrigin,
+    ...(maxBodyBytes !== undefined ? { maxBodyBytes } : {}),
+    ...(maxConnections !== undefined ? { maxConnections } : {}),
+  });
 }
 
 export function parseCanvasUrl(value) {

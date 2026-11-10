@@ -93,6 +93,44 @@ function fixture(options = {}) {
   return { pi, calls, notices, widgets, entries, renderers, ctx, original, commands, overlays, overlayRenders, component: () => component, emit: async (name, event = {}) => handlers.get(name)?.(event, ctx) };
 }
 
+test('status warns when a hostname origin does not resolve or is not the bind IP', async () => {
+  const entries = [];
+  const unresolvable = fixture({ tuiMode: true, inspectOrigin: async () => ({ kind: 'hostname', hostname: 'canvas.example', address: null, error: true }) });
+  unresolvable.pi.appendEntry = (type, data) => entries.push({ type, data });
+  const mismatched = fixture({ tuiMode: true, inspectOrigin: async () => ({ kind: 'hostname', hostname: 'canvas.example', address: '203.0.113.5', isPublic: true, matchesBind: false }) });
+  mismatched.pi.appendEntry = (type, data) => entries.push({ type, data });
+  const bound = fixture({ tuiMode: true, inspectOrigin: async () => ({ kind: 'hostname', hostname: 'canvas.lan', address: '192.168.1.20', isPublic: false, matchesBind: true }) });
+  bound.pi.appendEntry = (type, data) => entries.push({ type, data });
+  for (const f of [unresolvable, mismatched, bound]) {
+    f.pi.registerEntryRenderer?.('canvas-lan-status', () => ({ render: () => [] }));
+  }
+  const linesOf = () => entries.at(-1).data.lines;
+  await unresolvable.commands.get('canvas-lan:status').handler('', unresolvable.ctx);
+  assert.match(linesOf().join('\n'), /does not resolve/);
+  await mismatched.commands.get('canvas-lan:status').handler('', mismatched.ctx);
+  assert.match(linesOf().join('\n'), /203\.0\.113\.5/);
+  assert.match(linesOf().join('\n'), /not the bind IP/);
+  await bound.commands.get('canvas-lan:status').handler('', bound.ctx);
+  assert.match(linesOf().join('\n'), /192\.168\.1\.20 \(this host\)/);
+});
+
+test('setup rejects an origin hostname that does not resolve without saving', async t => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'canvas-origin-'));
+  const settingsPath = join(dir, 'config.json');
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const f = fixture({
+    settingsPath,
+    inputResponses: ['192.168.1.20', '34316', 'https://canvas.example'],
+    inspectOrigin: async () => ({ kind: 'hostname', hostname: 'canvas.example', address: null, error: true }),
+  });
+  await f.commands.get('canvas-lan:setup').handler('', f.ctx);
+  assert.match(f.notices.at(-1)[0], /does not resolve/);
+  try { await readFile(settingsPath, 'utf8'); assert.fail('settings must not be written'); } catch (e) { assert.equal(e.code, 'ENOENT'); }
+});
+
 test('entry registers without opening resources; command help/status/start/stop', async () => {
   const f = fixture();
   assert.deepEqual(f.calls, []);

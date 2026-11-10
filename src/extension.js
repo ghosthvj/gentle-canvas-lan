@@ -1,5 +1,6 @@
 import { readConfig } from './config.js';
 import { createController } from './controller.js';
+import { createOriginInspector } from './origin-check.js';
 import { attachSidebar } from './sidebar-adapter.js';
 import { createLanPanel } from './lan-panel.js';
 import { defaultSettingsPath, loadSettings, mergeSettings, saveSettings, validateSettings } from './settings.js';
@@ -29,7 +30,7 @@ const promptFields = async (ctx, current) => {
 };
 
 /** Expose LAN access while preserving Gentle Design's own local result fields. */
-export function installCanvasLan(pi, { env = process.env, makeController = createController, loadUi = () => import('@earendil-works/pi-tui'), settingsPath = defaultSettingsPath(env) } = {}) {
+export function installCanvasLan(pi, { env = process.env, makeController = createController, loadUi = () => import('@earendil-works/pi-tui'), settingsPath = defaultSettingsPath(env), inspectOrigin = createOriginInspector() } = {}) {
   let controller;
   let closed = false;
   const pending = new Set();
@@ -233,6 +234,13 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
     if (!values) return showNotice(ctx, 'LAN setup cancelled; nothing changed.');
     let next;
     try {
+      // A hostname origin must at least resolve before anything is persisted;
+      // the derived default origin is an IP literal and always passes.
+      const candidate = validateSettings(values);
+      const inspected = await inspectOrigin({ host: candidate.ip, publicOrigin: candidate.publicOrigin ?? '' });
+      if (inspected.kind === 'hostname' && inspected.error) {
+        throw new TypeError(`PUBLIC ORIGIN hostname ${inspected.hostname} does not resolve.`);
+      }
       next = await saveSettings(settingsPath, values);
     } catch (error) {
       return showNotice(ctx, error instanceof TypeError ? error.message : 'Could not save the Canvas LAN settings. Check the configured address and port.', 'error');
@@ -317,6 +325,19 @@ export function installCanvasLan(pi, { env = process.env, makeController = creat
       lines.push(`Canvas LAN port: ${config.port} (${source('GENTLE_CANVAS_LAN_PORT', 'port')})`);
       if (config.publicOrigin) {
         lines.push(`Canvas LAN origin: ${config.publicOrigin} (${source('GENTLE_CANVAS_LAN_PUBLIC_ORIGIN', 'publicOrigin')})`);
+        try {
+          const inspected = await inspectOrigin(config);
+          if (inspected.kind === 'hostname') {
+            if (inspected.error) {
+              lines.push(`Origin warning: ${inspected.hostname} does not resolve.`);
+            } else if (inspected.matchesBind) {
+              lines.push(`Canvas LAN origin resolves to ${inspected.address} (this host).`);
+            } else {
+              lines.push(`Origin warning: ${inspected.hostname} resolves to ${inspected.address}, not the bind IP`
+                + `${inspected.isPublic ? ' and is a public address' : ''} (reverse proxy?).`);
+            }
+          }
+        } catch { /* DNS inspection is advisory only. */ }
       }
     }
     if (env.GENTLE_CANVAS_LAN_HOST !== undefined) {

@@ -7,6 +7,19 @@ import { createCanvasProxy } from '../src/proxy.js';
 const token = 'abcdefghijklmnop';
 const publicOrigin = 'https://canvas.example.test';
 const host = new URL(publicOrigin).host;
+const requestTo = (port, path, options = {}) => new Promise((resolve, reject) => {
+  const req = http.request({
+    host: '127.0.0.1', port, path, method: options.method ?? 'GET',
+    headers: { host, ...options.headers },
+  }, res => {
+    let body = '';
+    res.on('data', chunk => { body += chunk; });
+    res.on('error', reject);
+    res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
+  });
+  req.on('error', reject);
+  req.end(options.body);
+});
 const listen = async server => {
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -39,7 +52,11 @@ async function fixture(t) {
       return;
     }
     let body = '';
-    for await (const chunk of req) body += chunk;
+    try {
+      for await (const chunk of req) body += chunk;
+    } catch {
+      return; // Aborted by the proxy (e.g. body cap): no mutation is counted.
+    }
     if (req.method === 'POST') mutations++;
     res.writeHead(201, {
       'content-type': 'application/json',
@@ -163,6 +180,60 @@ test('strips unsafe headers and changes only eligible CSP directive', async t =>
     `default-src ${f.origin}; frame-ancestors 'self' ${f.origin} ${publicOrigin}; img-src ${f.origin}`);
   assert.equal((await f.request(`/${token}/page`)).headers['content-security-policy'],
     "default-src 'self'; frame-ancestors 'none'");
+});
+
+test('request bodies larger than the cap are rejected without upstream effects', async t => {
+  const f = await fixture(t);
+  const big = 'x'.repeat(60 * 1024 * 1024);
+  const before = [f.seen.length, f.mutations()];
+  const response = await f.request(`/${token}/comments`, {
+    method: 'POST', headers: { origin: publicOrigin, 'content-type': 'text/plain' }, body: big,
+  });
+  assert.equal(response.status, 413);
+  assert.equal(response.body, 'Payload Too Large\n');
+  assert.deepEqual([f.seen.length, f.mutations()], before, 'declared oversize body never reaches upstream');
+  // Legitimate bodies below the cap still forward.
+  const ok = await f.request(`/${token}/comments`, {
+    method: 'POST', headers: { origin: publicOrigin, 'content-type': 'text/plain' }, body: 'small',
+  });
+  assert.equal(ok.status, 201);
+});
+
+test('capability failures are rate-limited per address with 429, legit traffic unaffected', { timeout: 4000 }, async t => {
+  const f = await fixture(t);
+  const limited = createCanvasProxy({
+    host: '127.0.0.1', port: 0, publicOrigin,
+    failureLimit: 3, failureWindowMs: 60000,
+  });
+  await limited.start();
+  t.after(() => limited.stop());
+  limited.setTarget({ origin: f.origin, token });
+  const probe = (path, options = {}) => requestTo(limited.port, path, options).then(r => r.status);
+  // Three wrong-token attempts pass with 404; the fourth is rejected as 429.
+  assert.equal(await probe('/wrongtokenabcdef/'), 404);
+  assert.equal(await probe('/wrongtokenabcdef/'), 404);
+  assert.equal(await probe('/wrongtokenabcdef/'), 404);
+  assert.equal(await probe('/wrongtokenabcdef/'), 429);
+  assert.equal(await probe(`/s/wrongwrongwrongwrong`), 429, 'short-code guesses share the bucket');
+  // A legitimate request from the same address is never throttled by failures.
+  assert.equal(await probe(`/${token}/`), 201);
+});
+
+test('failure window expiry restores normal rejections', { timeout: 4000 }, async t => {
+  const f = await fixture(t);
+  const limited = createCanvasProxy({
+    host: '127.0.0.1', port: 0, publicOrigin,
+    failureLimit: 2, failureWindowMs: 60,
+  });
+  await limited.start();
+  t.after(() => limited.stop());
+  limited.setTarget({ origin: f.origin, token });
+  const probe = path => requestTo(limited.port, path).then(r => r.status);
+  assert.equal(await probe('/wrongtokenabcdef/'), 404);
+  assert.equal(await probe('/wrongtokenabcdef/'), 404);
+  assert.equal(await probe('/wrongtokenabcdef/'), 429);
+  await new Promise(resolve => setTimeout(resolve, 120));
+  assert.equal(await probe('/wrongtokenabcdef/'), 404, 'bucket expired, counting restarts');
 });
 
 function stream(f, remainder = 'events') {

@@ -1,7 +1,10 @@
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 
-const errors = { 421: 'Misdirected Request\n', 404: 'Not Found\n', 403: 'Forbidden\n' };
+const errors = {
+  421: 'Misdirected Request\n', 404: 'Not Found\n', 403: 'Forbidden\n',
+  413: 'Payload Too Large\n', 429: 'Too Many Requests\n',
+};
 // The LAN port stays reserved while the local canvas is gone, so a browser that
 // follows an old link deserves an explanation instead of a bare "Bad Gateway".
 const canvasDownPage = `<!doctype html>
@@ -90,8 +93,15 @@ function extendCsp(value, origin, publicOrigin) {
 }
 
 /** Explicit endpoint only: registration and lifecycle serialization belong to the controller. */
-export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
+export function createCanvasProxy({ host, port, publicOrigin, shortCode, maxBodyBytes = 50 * 1024 * 1024,
+  maxConnections = 64, failureLimit = 30, failureWindowMs = 60000 }) {
   if (typeof host !== 'string' || !host.trim() || !Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error('Invalid proxy endpoint');
+  }
+  if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 1 ||
+      !Number.isInteger(maxConnections) || maxConnections < 1 ||
+      !Number.isInteger(failureLimit) || failureLimit < 1 ||
+      !Number.isInteger(failureWindowMs) || failureWindowMs < 1) {
     throw new Error('Invalid proxy endpoint');
   }
   const external = new URL(publicOrigin);
@@ -105,16 +115,40 @@ export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
   let boundPort = null;
   const sockets = new Set();
   const active = new Set();
+  const failures = new Map();
+  // Expire failure buckets so a corrected peer recovers without a restart.
+  const sweeper = setInterval(() => {
+    const now = Date.now();
+    for (const [key, bucket] of failures) {
+      if (now - bucket.start >= failureWindowMs) failures.delete(key);
+    }
+  }, Math.min(60000, failureWindowMs));
+  sweeper.unref();
   const server = http.createServer((req, res) => {
     const fail = status => {
       if (res.destroyed) return;
+      let responseStatus = status;
+      // Capability guesses (wrong host, origin, token or short code) are counted
+      // per client address; past the limit the same rejection becomes a 429.
+      // Legitimate requests are never counted, so they are never throttled.
+      if (status === 421 || status === 403 || status === 404) {
+        const key = req.socket.remoteAddress ?? 'unknown';
+        const now = Date.now();
+        let bucket = failures.get(key);
+        if (!bucket || now - bucket.start >= failureWindowMs) {
+          bucket = { start: now, count: 0 };
+          failures.set(key, bucket);
+        }
+        bucket.count += 1;
+        if (bucket.count > failureLimit) responseStatus = 429;
+      }
       if (res.headersSent) { res.destroy(); return; }
-      const body = status === 502 ? canvasDownPage : errors[status];
-      res.writeHead(status, {
-        'content-type': status === 502 ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8',
+      const body = responseStatus === 502 ? canvasDownPage : errors[responseStatus];
+      res.writeHead(responseStatus, {
+        'content-type': responseStatus === 502 ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8',
         'cache-control': 'no-store',
         // Only the explained page declares a length; other error paths stay byte-identical.
-        ...(status === 502 ? { 'content-length': Buffer.byteLength(body) } : {}),
+        ...(responseStatus === 502 ? { 'content-length': Buffer.byteLength(body) } : {}),
       });
       res.end(body);
       req.resume();
@@ -134,6 +168,9 @@ export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
       remainder === 'system.html' || remainder === 'assets/inspector.js');
     if (!(origin === publicOrigin || (origin === undefined && req.method === 'GET') ||
         (origin === 'null' && nullRead))) return fail(403);
+    // A declared body over the cap is rejected before any upstream connection.
+    const declared = Number.parseInt(req.headers['content-length'] ?? '', 10);
+    if (Number.isInteger(declared) && declared > maxBodyBytes) return fail(413);
 
     const headers = cleanHeaders(req.headers);
     headers.host = new URL(current.origin).host;
@@ -176,10 +213,32 @@ export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
       }
       res.writeHead(incoming.statusCode, outgoing);
       incoming.pipe(res);
+      res.on('finish', () => {
+        // The response is complete; a client body still arriving then only
+        // holds the upstream request open, so stop forwarding it. Open-ended
+        // responses (SSE) never finish and keep streaming as before.
+        if (!req.readableEnded) req.destroy();
+      });
+    });
+    // Undeclared (chunked) bodies are counted while forwarding and cut at the cap.
+    let forwarded = 0;
+    req.on('data', chunk => {
+      forwarded += chunk.length;
+      if (forwarded > maxBodyBytes) {
+        upstream.destroy();
+        clearTimeout(timer);
+        fail(413);
+      }
     });
     req.pipe(upstream);
   });
   server.on('connection', socket => {
+    // Beyond the cap a socket is destroyed before request handling; the cap
+    // only has to be generous enough for the expected one or two viewers.
+    if (sockets.size >= maxConnections) {
+      socket.destroy();
+      return;
+    }
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
   });
@@ -205,6 +264,7 @@ export function createCanvasProxy({ host, port, publicOrigin, shortCode }) {
       return boundPort;
     },
     async stop() {
+      clearInterval(sweeper);
       const closed = new Promise(resolve => server.close(resolve));
       for (const cancel of active) cancel();
       for (const socket of sockets) socket.destroy();
